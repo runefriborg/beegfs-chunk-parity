@@ -22,8 +22,9 @@ When a client chooses storage targets, it must never choose targets located on t
 
 - Option B
   - Slow identification of storage targets with difficulty of detecting missing storage chunks.
-    Perfrom parallel traversal of filesystems of all storage targets
+    Perform parallel traversal of filesystems of all storage targets
   - Full rebuild of a storage target to the original storaget target ID with no updates to the FhgFS meta server
+  - Could do a rebuild while the filesystem is online
 
 - Option C
   - Update parity data on every file close continusly
