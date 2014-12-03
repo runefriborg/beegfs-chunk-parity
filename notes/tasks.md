@@ -10,15 +10,15 @@
 - Create disk usage array for all storage targets
 - Build tasklist containing updated files since last parity-gen.
  - task (use data from parity-db if available):
-   - file-id
-   - full file size
-   - chunk storage target IDs (reduce the amount of storage target IDs, depending on the chunk size
-     info and the full file size)
-   - P storage target ID (choose based on a LRU table of storage target IDs,
-     weighting and disk usage)
-   - Q storage target ID (choose based on a LRU table of storage target IDs,
-     weighting and disk usage)
-   - Update disk usage array
+    - file-id
+    - full file size
+    - chunk storage target IDs (reduce the amount of storage target IDs, depending on the chunk size
+      info and the full file size)
+    - P storage target ID (choose based on a LRU table of storage target IDs,
+      weighting and disk usage)
+    - Q storage target ID (choose based on a LRU table of storage target IDs,
+      weighting and disk usage)
+    - Update disk usage array
 - Create storage-target-ID-to-MPI-rank map
 - Initialise parity-gen MPI-thread on every storage target
 - Receive a notification for every task:
@@ -42,11 +42,11 @@
     - file-id
     - full file size (from parity-db)
     - error-code (0 for OK, 1 if file size in meta data is different from parity-db, or
-     2 if modify-data is newer than last-updated-parity date)
-   - chunk storage target IDs (reduce the amount of storage target IDs,
-     depending on the chunk size info and the full file size) <-- Replace rebuild-target-id with new storage target ID (choose based on a LRU table of storage target IDs, weighting and disk usage)
-   - P storage target ID
-   - Q storage target ID
+      2 if modify-data is newer than last-updated-parity date)
+    - chunk storage target IDs (reduce the amount of storage target IDs,
+      depending on the chunk size info and the full file size) <-- Replace rebuild-target-id with new storage target ID (choose based on a LRU table of storage target IDs, weighting and disk usage)
+    - P storage target ID
+    - Q storage target ID
 - Create storage-target-ID-to-MPI-rank map
 - Initialise parity-rebuild MPI-thread on every storage target
 - Receive a notification for every task:
