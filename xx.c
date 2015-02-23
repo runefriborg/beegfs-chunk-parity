@@ -14,6 +14,8 @@
 #include <time.h>
 #include <dirent.h>
 
+#include <pthread.h>
+
 #define MAX_TARGETS 10
 #define TARGET_BUFFER_SIZE (1*1024*1024)
 #define TARGET_SEND_THRESHOLD (256*1024)
@@ -156,11 +158,63 @@ void feed_targets_with(FILE *input_file)
         }
     }
     send_remaining_data_to_targets();
+    /* tell global-coordinator that we are done */
+}
+
+static
+void* feed_func(void *state)
+{
+    (void) state;
+    feed_targets_with(stdin);
+    return NULL;
+}
+
+static
+void* eat_func(void *state)
+{
+    (void) state;
+
+    /*
+     * while true:
+     *   receive from any
+     *   if sender == global-coordinator:
+     *     break
+     *   parse and add data
+     * */
+    return NULL;
 }
 
 int main(int argc, char **argv)
 {
-    feed_targets_with(stdin);
+    /* if I am global-coordinator:
+     *   do something else
+     * else:
+     * */
+    pthread_t feeder;
+    pthread_t eater;
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+    pthread_create(&feeder, &attr, feed_func, NULL);
+    pthread_create(&eater, &attr, eat_func, NULL);
+    pthread_attr_destroy(&attr);
+
+    void *status_a = NULL;
+    void *status_b = NULL;
+    int rc = pthread_join(feeder, &status_a) | pthread_join(eater, &status_b);
+    if (rc) {
+        fprintf(stderr, "ERROR: pthread_join() = %d\n", rc);
+        return -1;
+    }
+    if (status_a != NULL || status_b != NULL) {
+        fprintf(stderr, "ERROR: bad thread status?\n");
+        return -1;
+    }
+
+    /*
+     * We have now sent info on all out chunks, and received info on all chunks
+     * that we are responsible for.
+     * */
 
     return 0;
 }
