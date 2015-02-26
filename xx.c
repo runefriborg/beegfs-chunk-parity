@@ -245,7 +245,6 @@ int main(int argc, char **argv)
     int first_eater_rank = eater_ranks[0];
     if (mpi_rank == global_coordinator)
     {
-        MPI_Barrier(MPI_COMM_WORLD);
         int still_in_stage_1 = MAX_TARGETS;
         int failed = 0;
         while (still_in_stage_1 > 0) {
@@ -260,17 +259,13 @@ int main(int argc, char **argv)
         uint8_t dummy = 1;
         for (int i = first_eater_rank; i < mpi_world_size; i++)
             send_sync_message_to(i, 1, &dummy);
-        MPI_Barrier(MPI_COMM_WORLD);
     }
     else if (mpi_rank >= first_feeder_rank && mpi_rank < first_eater_rank)
     {
-        MPI_Barrier(MPI_COMM_WORLD);
         feed_targets_with(fopen("sample-input", "r"));
-        MPI_Barrier(MPI_COMM_WORLD);
     }
     else if (mpi_rank >= first_eater_rank)
     {
-        MPI_Barrier(MPI_COMM_WORLD);
         uint8_t recv_buffer[TARGET_BUFFER_SIZE] = {0};
         for (;;) {
             MPI_Status stat;
@@ -282,7 +277,6 @@ int main(int argc, char **argv)
             MPI_Get_count(&stat, MPI_BYTE, &actually_received);
             printf("%d - received %d bytes from %d\n", mpi_rank, actually_received, stat.MPI_SOURCE);
         }
-        MPI_Barrier(MPI_COMM_WORLD);
     }
 
     /*
