@@ -155,9 +155,9 @@ void send_remaining_data_to_targets(void)
 static
 void feed_targets_with(FILE *input_file)
 {
-    ssize_t buf_size = 64*1024;
+    char buf[64*1024];
+    ssize_t buf_size = sizeof(buf);
     ssize_t buf_offset = 0;
-    char *buf = calloc(1, buf_size);
     int read;
     while ((read = fread(buf + buf_offset, 1, buf_size - buf_offset, input_file)) != 0)
     {
