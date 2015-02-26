@@ -5,7 +5,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <pthread.h>
 #include <mpi.h>
 
 #define MAX_TARGETS 2
@@ -214,6 +213,11 @@ int main(int argc, char **argv)
      * When the feeders are done they have nothing else to do.
      * Broadcasts would still transfer data to them, so we create a group
      * without the feeders.
+     *
+     * Ideally we could have made the feeders/eaters as two different threads,
+     * simply closing the feeder threads when done. But that doesn't work with
+     * the MPI version I am testing on - it causes data races and maybe some
+     * deadlocks.
      * */
     MPI_Group everyone, not_everyone;
     MPI_Comm_group(MPI_COMM_WORLD, &everyone);
