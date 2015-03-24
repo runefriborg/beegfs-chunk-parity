@@ -11,7 +11,7 @@
 
 #define MAX_TARGETS 2
 #define TARGET_BUFFER_SIZE (10*1024*1024)
-#define TARGET_SEND_THRESHOLD (5*1024*1024)
+#define TARGET_SEND_THRESHOLD (1*1024*1024)
 
 static const int global_coordinator = 0;
 static int mpi_rank;
@@ -49,7 +49,7 @@ unsigned simple_hash(const char *p, int len)
 static
 int eater_rank_from_st(int storage_target)
 {
-    return storage_target + 1 + MAX_TARGETS;
+    return storage_target + 1;
 }
 
 typedef struct {
@@ -65,6 +65,9 @@ static MPI_Request async_send_req[MAX_TARGETS] = {0};
 static uint8_t dst_buffer[MAX_TARGETS][TARGET_BUFFER_SIZE];
 
 static FileInfoHash *file_info_hash;
+#define MAX_WORKITEMS (1000*1000)
+FileInfo worklist_info[MAX_WORKITEMS];
+const char *worklist_keys[MAX_WORKITEMS];
 
 static
 int is_done_with_prev_async_send(int target)
@@ -210,8 +213,8 @@ int main(int argc, char **argv)
     MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &mpi_world_size);
 
-    int feeder_ranks[] = {1,2};
-    int eater_ranks[] = {3,4};
+    int eater_ranks[] = {1,2};
+    int feeder_ranks[] = {3,4};
 
     /* 
      * When the feeders are done they have nothing else to do.
@@ -247,6 +250,8 @@ int main(int argc, char **argv)
      */
     int first_feeder_rank = feeder_ranks[0];
     int first_eater_rank = eater_ranks[0];
+    int p1_eater = (mpi_rank >= first_eater_rank && mpi_rank < first_feeder_rank);
+    int p1_feeder = (mpi_rank >= first_feeder_rank);
     if (mpi_rank == global_coordinator)
     {
         int still_in_stage_1 = MAX_TARGETS;
@@ -261,14 +266,14 @@ int main(int argc, char **argv)
         }
         /* Inform all eaters that there is no more food */
         uint8_t dummy = 1;
-        for (int i = first_eater_rank; i < mpi_world_size; i++)
+        for (int i = first_eater_rank; i < first_feeder_rank; i++)
             send_sync_message_to(i, 1, &dummy);
     }
-    else if (mpi_rank >= first_feeder_rank && mpi_rank < first_eater_rank)
+    else if (p1_feeder)
     {
         feed_targets_with(fopen("sample-input", "r"));
     }
-    else if (mpi_rank >= first_eater_rank)
+    else if (p1_eater)
     {
         file_info_hash = fih_init();
         uint8_t recv_buffer[TARGET_BUFFER_SIZE] = {0};
@@ -296,11 +301,33 @@ int main(int argc, char **argv)
         }
     }
 
+    if (p1_feeder) {
+        MPI_Barrier(MPI_COMM_WORLD);
+        MPI_Finalize();
+        return 0;
+    }
+
     /*
      * We have now sent info on all out chunks, and received info on all chunks
      * that we are responsible for.
      * */
+    for (int i = first_eater_rank; i < first_feeder_rank; i++)
+    {
+        size_t nitems = 0;
+        if (mpi_rank == i)
+        {
+            /*
+             * Collect all file info entries in to a packed array that is ready for
+             * broadcasting.
+             * */
+            nitems = fih_collect(file_info_hash, MAX_WORKITEMS, worklist_keys, worklist_info);
+            printf("%d - nitems = %zu\n", mpi_rank, nitems);
+        }
+        MPI_Bcast(&nitems, sizeof(nitems), MPI_BYTE, i, comm);
+        MPI_Bcast(worklist_info, sizeof(FileInfo)*nitems, MPI_BYTE, i, comm);
+    }
 
+    MPI_Barrier(MPI_COMM_WORLD);
     MPI_Finalize();
     return 0;
 }

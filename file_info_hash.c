@@ -30,7 +30,7 @@ void fih_add_info(FileInfoHash *fih, char *key, uint16_t src, uint64_t size, uin
 
 size_t fih_collect(const FileInfoHash *fih, size_t max, const char **keys, FileInfo *vals)
 {
-    size_t j;
+    size_t j = 0;
     khash_t(fih) *h = fih->h;
     for (khint_t i = kh_begin(h); i != kh_end(h) && j < max; i++)
         if (kh_exist(h, i)) {
