@@ -343,7 +343,7 @@ int main(int argc, char **argv)
         }
         MPI_Bcast(&nitems, sizeof(nitems), MPI_BYTE, i, comm);
         MPI_Bcast(worklist_info, sizeof(FileInfo)*nitems, MPI_BYTE, i, comm);
-        MPI_Bcast(&path_bytes, sizeof(nitems), MPI_BYTE, i, comm);
+        MPI_Bcast(&path_bytes, sizeof(path_bytes), MPI_BYTE, i, comm);
         MPI_Bcast(worklist_keys, path_bytes, MPI_BYTE, i, comm);
     }
 
