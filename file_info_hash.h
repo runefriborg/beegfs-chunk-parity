@@ -1,0 +1,25 @@
+#ifndef __FIH__
+#define __FIH__
+
+#include <stdint.h>
+
+#include "khash.h"
+
+typedef struct {
+    uint64_t byte_size;
+    uint64_t timestamp;
+    uint16_t locations[16];
+} FileInfo;
+
+KHASH_MAP_INIT_STR(fih, FileInfo)
+
+
+typedef struct {
+    khash_t(fih) *h;
+} FileInfoHash;
+
+FileInfoHash* fih_init();
+void fih_add_info(FileInfoHash *fih, char *key, uint16_t src, uint64_t size, uint64_t time);
+size_t fih_collect(const FileInfoHash *fih, size_t max, const char **keys, FileInfo *vals);
+
+#endif

@@ -7,9 +7,11 @@
 
 #include <mpi.h>
 
+#include "file_info_hash.h"
+
 #define MAX_TARGETS 2
-#define TARGET_BUFFER_SIZE (1*1024*1024)
-#define TARGET_SEND_THRESHOLD (256*1024)
+#define TARGET_BUFFER_SIZE (10*1024*1024)
+#define TARGET_SEND_THRESHOLD (5*1024*1024)
 
 static const int global_coordinator = 0;
 static int mpi_rank;
@@ -61,6 +63,8 @@ static ssize_t  dst_written[MAX_TARGETS] = {0};
 static ssize_t  dst_in_transit[MAX_TARGETS] = {0};
 static MPI_Request async_send_req[MAX_TARGETS] = {0};
 static uint8_t dst_buffer[MAX_TARGETS][TARGET_BUFFER_SIZE];
+
+static FileInfoHash *file_info_hash;
 
 static
 int is_done_with_prev_async_send(int target)
@@ -266,6 +270,7 @@ int main(int argc, char **argv)
     }
     else if (mpi_rank >= first_eater_rank)
     {
+        file_info_hash = fih_init();
         uint8_t recv_buffer[TARGET_BUFFER_SIZE] = {0};
         for (;;) {
             MPI_Status stat;
@@ -275,6 +280,18 @@ int main(int argc, char **argv)
             /* parse and add data */
             int actually_received = 0;
             MPI_Get_count(&stat, MPI_BYTE, &actually_received);
+            uint16_t src = (uint16_t)stat.MPI_SOURCE;
+            int i = 0;
+            while (i < actually_received) {
+                packed_file_info *pfi = (packed_file_info *)(recv_buffer+i);
+                /*printf("%d - received '%.*s' from %d\n", mpi_rank, (uint32_t)(pfi->path_len), pfi->path, src);*/
+                fih_add_info(file_info_hash,
+                        strndup(pfi->path, pfi->path_len),
+                        src,
+                        pfi->byte_size,
+                        pfi->timestamp);
+                i += sizeof(packed_file_info) + pfi->path_len;
+            }
             printf("%d - received %d bytes from %d\n", mpi_rank, actually_received, stat.MPI_SOURCE);
         }
     }
