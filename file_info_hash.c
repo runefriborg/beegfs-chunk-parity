@@ -9,7 +9,7 @@ FileInfoHash* fih_init()
     return res;
 }
 
-void fih_add_info(FileInfoHash *fih, char *key, uint16_t src, uint64_t size, uint64_t time)
+int fih_add_info(FileInfoHash *fih, char *key, uint16_t src, uint64_t size, uint64_t time)
 {
     khash_t(fih) *h = fih->h;
     int r;
@@ -17,8 +17,6 @@ void fih_add_info(FileInfoHash *fih, char *key, uint16_t src, uint64_t size, uin
     FileInfo *fi = &kh_val(h, it);
     if (r == 1)
         memset(fi, 0, sizeof(FileInfo));
-    else
-        free(key);
     fi->byte_size = fi->byte_size > size? fi->byte_size : size;
     fi->timestamp = time;
     int i = 0;
@@ -26,6 +24,19 @@ void fih_add_info(FileInfoHash *fih, char *key, uint16_t src, uint64_t size, uin
     {
     }
     fi->locations[i] = src;
+    return (r == 0);
+}
+
+int fih_get(const FileInfoHash *fih, const char *key, FileInfo *val)
+{
+    khash_t(fih) *h = fih->h;
+    khint_t it = kh_get(fih, h, key);
+    if (it != kh_end(h))
+    {
+        *val = kh_val(h, it);
+        return 1;
+    }
+    return 0;
 }
 
 size_t fih_collect(const FileInfoHash *fih, size_t max, const char **keys, FileInfo *vals)

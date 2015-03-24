@@ -66,8 +66,10 @@ static uint8_t dst_buffer[MAX_TARGETS][TARGET_BUFFER_SIZE];
 
 static FileInfoHash *file_info_hash;
 #define MAX_WORKITEMS (1000*1000)
-FileInfo worklist_info[MAX_WORKITEMS];
-const char *worklist_keys[MAX_WORKITEMS];
+static char flat_file_names[MAX_WORKITEMS*100];
+static size_t name_bytes_written;
+static FileInfo worklist_info[MAX_WORKITEMS];
+static char worklist_keys[sizeof(flat_file_names)];
 
 static
 int is_done_with_prev_async_send(int target)
@@ -289,13 +291,20 @@ int main(int argc, char **argv)
             int i = 0;
             while (i < actually_received) {
                 packed_file_info *pfi = (packed_file_info *)(recv_buffer+i);
+                i += sizeof(packed_file_info) + pfi->path_len;
+                if (name_bytes_written + pfi->path_len + 1 >= sizeof(flat_file_names))
+                    continue;
                 /*printf("%d - received '%.*s' from %d\n", mpi_rank, (uint32_t)(pfi->path_len), pfi->path, src);*/
-                fih_add_info(file_info_hash,
-                        strndup(pfi->path, pfi->path_len),
+                char *n = flat_file_names + name_bytes_written;
+                memmove(n, pfi->path, pfi->path_len);
+                n[pfi->path_len] = '\0';
+                name_bytes_written += pfi->path_len + 1;
+                if (fih_add_info(file_info_hash,
+                        n,
                         src,
                         pfi->byte_size,
-                        pfi->timestamp);
-                i += sizeof(packed_file_info) + pfi->path_len;
+                        pfi->timestamp))
+                    name_bytes_written -= pfi->path_len + 1;
             }
             printf("%d - received %d bytes from %d\n", mpi_rank, actually_received, stat.MPI_SOURCE);
         }
@@ -314,17 +323,28 @@ int main(int argc, char **argv)
     for (int i = first_eater_rank; i < first_feeder_rank; i++)
     {
         size_t nitems = 0;
+        size_t path_bytes = 0;
         if (mpi_rank == i)
         {
             /*
              * Collect all file info entries in to a packed array that is ready for
              * broadcasting.
              * */
-            nitems = fih_collect(file_info_hash, MAX_WORKITEMS, worklist_keys, worklist_info);
+            const char *s = flat_file_names;
+            while (s < flat_file_names + name_bytes_written && *s != '\0')
+            {
+                fih_get(file_info_hash, s, &worklist_info[nitems]);
+                s += strlen(s) + 1;
+                nitems += 1;
+            }
             printf("%d - nitems = %zu\n", mpi_rank, nitems);
+            path_bytes = name_bytes_written;
+            memcpy(worklist_keys, flat_file_names, path_bytes);
         }
         MPI_Bcast(&nitems, sizeof(nitems), MPI_BYTE, i, comm);
         MPI_Bcast(worklist_info, sizeof(FileInfo)*nitems, MPI_BYTE, i, comm);
+        MPI_Bcast(&path_bytes, sizeof(nitems), MPI_BYTE, i, comm);
+        MPI_Bcast(worklist_keys, path_bytes, MPI_BYTE, i, comm);
     }
 
     MPI_Barrier(MPI_COMM_WORLD);
