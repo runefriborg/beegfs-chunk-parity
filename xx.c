@@ -9,9 +9,12 @@
 
 #include "file_info_hash.h"
 
-#define MAX_TARGETS 2
+#include "common.h"
+#define MAX_TARGETS 4
 #define TARGET_BUFFER_SIZE (10*1024*1024)
 #define TARGET_SEND_THRESHOLD (1*1024*1024)
+
+extern void process_task(int16_t my_rank, const char *path, const FileInfo *fi);
 
 static const int global_coordinator = 0;
 static int mpi_rank;
@@ -50,6 +53,37 @@ static
 int eater_rank_from_st(int storage_target)
 {
     return storage_target + 1;
+}
+static
+int eater_rank_from_feeder(int feeder)
+{
+    return feeder - MAX_TARGETS;
+}
+
+/*
+ * Selecting the P and Q ranks is done by hashing the path once and then
+ * iteratively hashing the hash result until we can map it to a rank that is
+ * not already mentioned in the list of locations.
+ * Could be done smarter -- for one there is no gurantee this terminates.
+ */
+static
+void select_PQ(const char *path, FileInfo *fi)
+{
+    unsigned H = simple_hash(path, strlen(path));
+choose_P_again:
+    H = H ^ simple_hash((const char *)&H, sizeof(H));
+    int16_t P = (H % MAX_TARGETS) + 1;
+    for (int i = 0; i < MAX_LOCS+2; i++)
+        if (fi->locations[i] == P)
+            goto choose_P_again;
+    fi->locations[P_INDEX] = P;
+choose_Q_again:
+    H = H ^ simple_hash((const char *)&H, sizeof(H));
+    int16_t Q = (H % MAX_TARGETS) + 1;
+    for (int i = 0; i < MAX_LOCS+2; i++)
+        if (fi->locations[i] == Q)
+            goto choose_Q_again;
+    fi->locations[Q_INDEX] = Q;
 }
 
 typedef struct {
@@ -168,6 +202,7 @@ void feed_targets_with(FILE *input_file)
     ssize_t buf_size = sizeof(buf);
     ssize_t buf_offset = 0;
     int read;
+    int counter = 0;
     while ((read = fread(buf + buf_offset, 1, buf_size - buf_offset, input_file)) != 0)
     {
         ssize_t buf_alive = buf_offset + read;
@@ -195,12 +230,16 @@ void feed_targets_with(FILE *input_file)
             uint64_t byte_size = strtoull(size, &tmp, 10);
             unsigned st = (simple_hash(path, len_of_path)) % MAX_TARGETS;
             // printf("%u - %" PRIu64 " %*s %" PRIu64 "\n", st, timestamp_secs, len_of_path, path, byte_size);
-            push_to_target(
-                    st,
-                    path,
-                    len_of_path,
-                    byte_size,
-                    timestamp_secs);
+            if (eater_rank_from_st(st) != eater_rank_from_feeder(mpi_rank)
+                    && (mpi_rank % 2) == (counter % 2)) {
+                push_to_target(
+                        st,
+                        path,
+                        len_of_path,
+                        byte_size,
+                        timestamp_secs);
+            }
+            counter += 1;
         }
     }
     send_remaining_data_to_targets();
@@ -215,8 +254,8 @@ int main(int argc, char **argv)
     MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &mpi_world_size);
 
-    int eater_ranks[] = {1,2};
-    int feeder_ranks[] = {3,4};
+    int eater_ranks[] = {1,2,3,4};
+    int feeder_ranks[] = {5,6,7,8};
 
     /* 
      * When the feeders are done they have nothing else to do.
@@ -230,7 +269,7 @@ int main(int argc, char **argv)
      * */
     MPI_Group everyone, not_everyone;
     MPI_Comm_group(MPI_COMM_WORLD, &everyone);
-    MPI_Group_excl(everyone, 2, feeder_ranks, &not_everyone);
+    MPI_Group_excl(everyone, MAX_TARGETS, feeder_ranks, &not_everyone);
     MPI_Comm comm;
     MPI_Comm_create(MPI_COMM_WORLD, not_everyone, &comm);
 
@@ -301,7 +340,7 @@ int main(int argc, char **argv)
                 name_bytes_written += pfi->path_len + 1;
                 if (fih_add_info(file_info_hash,
                         n,
-                        src,
+                        eater_rank_from_feeder(src),
                         pfi->byte_size,
                         pfi->timestamp))
                     name_bytes_written -= pfi->path_len + 1;
@@ -311,7 +350,6 @@ int main(int argc, char **argv)
     }
 
     if (p1_feeder) {
-        MPI_Barrier(MPI_COMM_WORLD);
         MPI_Finalize();
         return 0;
     }
@@ -333,7 +371,9 @@ int main(int argc, char **argv)
             const char *s = flat_file_names;
             while (s < flat_file_names + name_bytes_written && *s != '\0')
             {
-                fih_get(file_info_hash, s, &worklist_info[nitems]);
+                FileInfo *fi = worklist_info + nitems;
+                fih_get(file_info_hash, s, fi);
+                select_PQ(s, fi);
                 s += strlen(s) + 1;
                 nitems += 1;
             }
@@ -345,9 +385,17 @@ int main(int argc, char **argv)
         MPI_Bcast(worklist_info, sizeof(FileInfo)*nitems, MPI_BYTE, i, comm);
         MPI_Bcast(&path_bytes, sizeof(path_bytes), MPI_BYTE, i, comm);
         MPI_Bcast(worklist_keys, path_bytes, MPI_BYTE, i, comm);
+
+        size_t j = 0;
+        const char *s = worklist_keys;
+        while (j < nitems)
+        {
+            process_task(mpi_rank, s, worklist_info + j);
+            s += strlen(s) + 1;
+            j += 1;
+        }
     }
 
-    MPI_Barrier(MPI_COMM_WORLD);
     MPI_Finalize();
     return 0;
 }

@@ -4,12 +4,7 @@
 #include <stdint.h>
 
 #include "khash.h"
-
-typedef struct {
-    uint64_t byte_size;
-    uint64_t timestamp;
-    uint16_t locations[16];
-} FileInfo;
+#include "common.h"
 
 KHASH_MAP_INIT_STR(fih, FileInfo)
 
