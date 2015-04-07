@@ -9,7 +9,7 @@
 
 typedef struct {
     uint64_t full_file_size;
-    uint64_t byte_size;
+    uint64_t max_chunk_size;
     uint64_t timestamp;
     int16_t locations[MAX_LOCS + 2];
 } FileInfo;

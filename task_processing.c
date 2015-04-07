@@ -80,7 +80,7 @@ void parity_generator(const char *path, const FileInfo *task)
     uint8_t *Q_data = calloc(1, FILE_TRANSFER_BUFFER_SIZE);
     int P_fd = open_fileid_new_parity(path);
     int P_local_write_error = (P_fd < 0);
-    int expected_messages = (task->byte_size == 0)? 0 : (1 + task->byte_size / FILE_TRANSFER_BUFFER_SIZE);
+    int expected_messages = (task->max_chunk_size == 0)? 0 : (1 + task->max_chunk_size / FILE_TRANSFER_BUFFER_SIZE);
     MPI_Status stat;
     MPI_Request last_msg_to_Q;
     MPI_Request source_messages[active_source_ranks];
@@ -132,7 +132,7 @@ void parity_receiver(const char *path, const FileInfo *task)
     int Q_local_write_error = (Q_fd < 0);
     uint8_t *data = malloc(FILE_TRANSFER_BUFFER_SIZE);
     uint64_t received_from_coordinator = 0;
-    uint64_t expected_from_coordinator = task->byte_size;
+    uint64_t expected_from_coordinator = task->max_chunk_size;
     while (received_from_coordinator < expected_from_coordinator)
     {
         receive_sync_message_from(coordinator, FILE_TRANSFER_BUFFER_SIZE, data);
@@ -151,7 +151,7 @@ void parity_receiver(const char *path, const FileInfo *task)
 void chunk_sender(const char *path, const FileInfo *task)
 {
     int16_t coordinator = P_rank(task);
-    uint64_t data_in_fd = task->byte_size;
+    uint64_t data_in_fd = task->max_chunk_size;
     uint8_t *data = calloc(1, FILE_TRANSFER_BUFFER_SIZE);
     int have_had_error = 0;
     int fd = open_fileid_readonly(path);
