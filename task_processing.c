@@ -58,6 +58,12 @@ int active_ranks(const int16_t *ranks, int n)
     return i;
 }
 
+static
+uint64_t div_round_up(uint64_t a, uint64_t b)
+{
+    return (a + (b - 1)) / b;
+}
+
 /*
  * Roles:
  *  parity_receiver - simply receives parts of Q from the P-rank
@@ -68,10 +74,11 @@ int active_ranks(const int16_t *ranks, int n)
 void parity_generator(const char *path, const FileInfo *task)
 {
     const int active_source_ranks = active_ranks(task->locations, MAX_LOCS);
+    size_t buffer_size = MIN(FILE_TRANSFER_BUFFER_SIZE, task->max_chunk_size);
     uint8_t *data = calloc(active_source_ranks, FILE_TRANSFER_BUFFER_SIZE);
     int P_fd = open_fileid_new_parity(path);
     int P_local_write_error = (P_fd < 0);
-    int expected_messages = (task->max_chunk_size == 0)? 0 : (1 + task->max_chunk_size / FILE_TRANSFER_BUFFER_SIZE);
+    int expected_messages = div_round_up(task->max_chunk_size, FILE_TRANSFER_BUFFER_SIZE);
     MPI_Request source_messages[active_source_ranks];
     MPI_Status source_stat[active_source_ranks];
     for (int msg_i = 0; msg_i < expected_messages; msg_i++)
@@ -81,8 +88,8 @@ void parity_generator(const char *path, const FileInfo *task)
          * received data before waiting -- but this is only a first draft. */
         for (int i = 0; i < active_source_ranks; i++) {
             MPI_Irecv(
-                    data + i*FILE_TRANSFER_BUFFER_SIZE,
-                    FILE_TRANSFER_BUFFER_SIZE,
+                    data + i*buffer_size,
+                    buffer_size,
                     MPI_BYTE,
                     task->locations[i],
                     0,
@@ -92,7 +99,7 @@ void parity_generator(const char *path, const FileInfo *task)
         MPI_Waitall(active_source_ranks, source_messages, source_stat);
         /* calculate P/Q and write P to disk */
         if (!P_local_write_error) {
-            ssize_t w = write(P_fd, data, FILE_TRANSFER_BUFFER_SIZE);
+            ssize_t w = write(P_fd, data, buffer_size);
             P_local_write_error |= (w <= 0);
         }
     }
@@ -104,6 +111,7 @@ void chunk_sender(const char *path, const FileInfo *task)
 {
     int16_t coordinator = P_rank(task);
     uint64_t data_in_fd = task->max_chunk_size;
+    size_t buffer_size = MIN(FILE_TRANSFER_BUFFER_SIZE, task->max_chunk_size);
     uint8_t *data = calloc(1, FILE_TRANSFER_BUFFER_SIZE);
     int have_had_error = 0;
     int fd = open_fileid_readonly(path);
@@ -114,11 +122,11 @@ void chunk_sender(const char *path, const FileInfo *task)
     while (read_from_fd < data_in_fd)
     {
         if (!have_had_error) {
-            ssize_t r = read(fd, data, FILE_TRANSFER_BUFFER_SIZE);
+            ssize_t r = read(fd, data, buffer_size);
             have_had_error |= (r <= 0);
         }
-        read_from_fd += FILE_TRANSFER_BUFFER_SIZE;
-        send_sync_message_to(coordinator, FILE_TRANSFER_BUFFER_SIZE, data);
+        read_from_fd += buffer_size;
+        send_sync_message_to(coordinator, buffer_size, data);
     }
     free(data);
     close(fd);
