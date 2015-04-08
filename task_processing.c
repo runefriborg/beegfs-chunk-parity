@@ -24,13 +24,6 @@ void send_sync_message_to(int16_t recieving_rank, int msg_size, const uint8_t ms
     MPI_Send((void*)msg, msg_size, MPI_BYTE, recieving_rank, 0, MPI_COMM_WORLD);
 }
 
-static
-void receive_sync_message_from(int16_t sending_rank, int msg_size, uint8_t msg[static msg_size])
-{
-    MPI_Status stat;
-    MPI_Recv(msg, msg_size, MPI_BYTE, sending_rank, 0, MPI_COMM_WORLD, &stat);
-}
-
 #define MAX_CHUNKS_PER_FILE 8
 typedef const char* FileID;
 
@@ -55,7 +48,6 @@ int open_fileid_new_parity(FileID id)
 }
 
 #define P_rank(fi) ((fi)->locations[P_INDEX])
-#define Q_rank(fi) ((fi)->locations[Q_INDEX])
 
 static
 int active_ranks(const int16_t *ranks, int n)
@@ -77,12 +69,9 @@ void parity_generator(const char *path, const FileInfo *task)
 {
     const int active_source_ranks = active_ranks(task->locations, MAX_LOCS);
     uint8_t *data = calloc(active_source_ranks, FILE_TRANSFER_BUFFER_SIZE);
-    uint8_t *Q_data = calloc(1, FILE_TRANSFER_BUFFER_SIZE);
     int P_fd = open_fileid_new_parity(path);
     int P_local_write_error = (P_fd < 0);
     int expected_messages = (task->max_chunk_size == 0)? 0 : (1 + task->max_chunk_size / FILE_TRANSFER_BUFFER_SIZE);
-    MPI_Status stat;
-    MPI_Request last_msg_to_Q;
     MPI_Request source_messages[active_source_ranks];
     MPI_Status source_stat[active_source_ranks];
     for (int msg_i = 0; msg_i < expected_messages; msg_i++)
@@ -106,46 +95,9 @@ void parity_generator(const char *path, const FileInfo *task)
             ssize_t w = write(P_fd, data, FILE_TRANSFER_BUFFER_SIZE);
             P_local_write_error |= (w <= 0);
         }
-        /* send Q to Q_rank */
-        if (msg_i != 0)
-            MPI_Wait(&last_msg_to_Q, &stat);
-        MPI_Isend(
-                Q_data,
-                FILE_TRANSFER_BUFFER_SIZE,
-                MPI_BYTE,
-                Q_rank(task),
-                0,
-                MPI_COMM_WORLD,
-                &last_msg_to_Q);
-        if (msg_i + 1 == expected_messages)
-            MPI_Wait(&last_msg_to_Q, &stat);
     }
-    free(Q_data);
     free(data);
     close(P_fd);
-}
-
-void parity_receiver(const char *path, const FileInfo *task)
-{
-    int16_t coordinator = P_rank(task);
-    int Q_fd = open_fileid_new_parity(path);
-    int Q_local_write_error = (Q_fd < 0);
-    uint8_t *data = malloc(FILE_TRANSFER_BUFFER_SIZE);
-    uint64_t received_from_coordinator = 0;
-    uint64_t expected_from_coordinator = task->max_chunk_size;
-    while (received_from_coordinator < expected_from_coordinator)
-    {
-        receive_sync_message_from(coordinator, FILE_TRANSFER_BUFFER_SIZE, data);
-        if (!Q_local_write_error) {
-            ssize_t w = write(Q_fd, data, FILE_TRANSFER_BUFFER_SIZE);
-            Q_local_write_error |= (w <= 0);
-        }
-        /* Check for errors */
-        received_from_coordinator += FILE_TRANSFER_BUFFER_SIZE;
-    }
-    close(Q_fd);
-    free(data);
-    /* If successful - overwrite old parity */
 }
 
 void chunk_sender(const char *path, const FileInfo *task)
@@ -179,8 +131,6 @@ void process_task(int16_t my_rank, const char *path, const FileInfo *fi)
         found_in_srcs |= (fi->locations[j] == my_rank);
     if (P_rank(fi) == my_rank)
         parity_generator(path, fi);
-    else if (Q_rank(fi) == my_rank)
-        parity_receiver(path, fi);
     else if (found_in_srcs && my_rank > 0)
         chunk_sender(path, fi);
 }

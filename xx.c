@@ -73,17 +73,10 @@ void select_PQ(const char *path, FileInfo *fi)
 choose_P_again:
     H = H ^ simple_hash((const char *)&H, sizeof(H));
     int16_t P = (H % MAX_TARGETS) + 1;
-    for (int i = 0; i < MAX_LOCS+2; i++)
+    for (int i = 0; i < MAX_LOCS+1; i++)
         if (fi->locations[i] == P)
             goto choose_P_again;
     fi->locations[P_INDEX] = P;
-choose_Q_again:
-    H = H ^ simple_hash((const char *)&H, sizeof(H));
-    int16_t Q = (H % MAX_TARGETS) + 1;
-    for (int i = 0; i < MAX_LOCS+2; i++)
-        if (fi->locations[i] == Q)
-            goto choose_Q_again;
-    fi->locations[Q_INDEX] = Q;
 }
 
 typedef struct {
