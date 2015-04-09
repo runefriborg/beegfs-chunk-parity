@@ -61,6 +61,19 @@ uint64_t div_round_up(uint64_t a, uint64_t b)
     return (a + (b - 1)) / b;
 }
 
+void xor_parity(uint8_t *restrict dst, size_t nbytes, const uint8_t *data, int nsources)
+{
+    for (int j = 0; j < nsources; j++)
+    {
+        const uint8_t *src = data + j*nbytes; 
+        size_t i = 0;
+        for (; i + 8 < nbytes; i += 8)
+            *(uint64_t *)(dst + i) ^= *(uint64_t *)(src + i);
+        for (; i < nbytes; i++)
+            dst[i] ^= src[i];
+    }
+}
+
 /*
  * Roles:
  *  chunk_sender - open file and start sending parts to P-rank
@@ -72,6 +85,7 @@ void parity_generator(const char *path, const FileInfo *task)
     const int active_source_ranks = active_ranks(task->locations, MAX_LOCS);
     size_t buffer_size = MIN(FILE_TRANSFER_BUFFER_SIZE, task->max_chunk_size);
     uint8_t *data = calloc(active_source_ranks, FILE_TRANSFER_BUFFER_SIZE);
+    uint8_t *P_block = calloc(1, FILE_TRANSFER_BUFFER_SIZE);
     int P_fd = open_fileid_new_parity(path);
     int P_local_write_error = (P_fd < 0);
     int expected_messages = div_round_up(task->max_chunk_size, FILE_TRANSFER_BUFFER_SIZE);
@@ -94,11 +108,13 @@ void parity_generator(const char *path, const FileInfo *task)
         }
         MPI_Waitall(active_source_ranks, source_messages, source_stat);
         /* calculate P and write to disk */
+        xor_parity(P_block, buffer_size, data, active_source_ranks);
         if (!P_local_write_error) {
-            ssize_t w = write(P_fd, data, buffer_size);
+            ssize_t w = write(P_fd, P_block, buffer_size);
             P_local_write_error |= (w <= 0);
         }
     }
+    free(P_block);
     free(data);
     close(P_fd);
 }
