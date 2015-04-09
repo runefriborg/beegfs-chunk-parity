@@ -66,10 +66,9 @@ uint64_t div_round_up(uint64_t a, uint64_t b)
 
 /*
  * Roles:
- *  parity_receiver - simply receives parts of Q from the P-rank
- *  chunk_sender - open file_id and starts sending parts to P-rank
+ *  chunk_sender - open file and start sending parts to P-rank
  *  parity_generator:
- *      receives chunks sources, does parity and sends parts of Q to Q-rank
+ *      receives data from chunk sources, calculate and store parity
  */
 void parity_generator(const char *path, const FileInfo *task)
 {
@@ -97,7 +96,7 @@ void parity_generator(const char *path, const FileInfo *task)
                     &source_messages[i]);
         }
         MPI_Waitall(active_source_ranks, source_messages, source_stat);
-        /* calculate P/Q and write P to disk */
+        /* calculate P and write to disk */
         if (!P_local_write_error) {
             ssize_t w = write(P_fd, data, buffer_size);
             P_local_write_error |= (w <= 0);

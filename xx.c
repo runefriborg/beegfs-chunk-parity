@@ -61,13 +61,13 @@ int eater_rank_from_feeder(int feeder)
 }
 
 /*
- * Selecting the P and Q ranks is done by hashing the path once and then
- * iteratively hashing the hash result until we can map it to a rank that is
- * not already mentioned in the list of locations.
+ * Selecting the P rank is done by hashing the path once and then iteratively
+ * hashing the hash result until we can map it to a rank that is not already
+ * mentioned in the list of locations.
  * Could be done smarter -- for one there is no gurantee this terminates.
  */
 static
-void select_PQ(const char *path, FileInfo *fi)
+void select_P(const char *path, FileInfo *fi)
 {
     unsigned H = simple_hash(path, strlen(path));
 choose_P_again:
@@ -366,7 +366,7 @@ int main(int argc, char **argv)
             {
                 FileInfo *fi = worklist_info + nitems;
                 fih_get(file_info_hash, s, fi);
-                select_PQ(s, fi);
+                select_P(s, fi);
                 s += strlen(s) + 1;
                 nitems += 1;
             }
