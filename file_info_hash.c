@@ -40,15 +40,3 @@ int fih_get(const FileInfoHash *fih, const char *key, FileInfo *val)
     return 0;
 }
 
-size_t fih_collect(const FileInfoHash *fih, size_t max, const char **keys, FileInfo *vals)
-{
-    size_t j = 0;
-    khash_t(fih) *h = fih->h;
-    for (khint_t i = kh_begin(h); i != kh_end(h) && j < max; i++)
-        if (kh_exist(h, i)) {
-            keys[j] = kh_key(h, i);
-            vals[j] = kh_val(h, i);
-            j += 1;
-        }
-    return j;
-}

@@ -16,6 +16,5 @@ typedef struct {
 FileInfoHash* fih_init();
 int fih_add_info(FileInfoHash *fih, char *key, uint16_t src, uint64_t size, uint64_t time);
 int fih_get(const FileInfoHash *fih, const char *key, FileInfo *val);
-size_t fih_collect(const FileInfoHash *fih, size_t max, const char **keys, FileInfo *vals);
 
 #endif
