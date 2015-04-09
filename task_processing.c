@@ -24,11 +24,8 @@ void send_sync_message_to(int16_t recieving_rank, int msg_size, const uint8_t ms
     MPI_Send((void*)msg, msg_size, MPI_BYTE, recieving_rank, 0, MPI_COMM_WORLD);
 }
 
-#define MAX_CHUNKS_PER_FILE 8
-typedef const char* FileID;
-
 static
-int open_fileid_readonly(FileID id)
+int open_fileid_readonly(const char *id)
 {
     (void) id;
     int fd = open("/dev/zero", O_RDONLY);
@@ -38,7 +35,7 @@ int open_fileid_readonly(FileID id)
 }
 
 static
-int open_fileid_new_parity(FileID id)
+int open_fileid_new_parity(const char *id)
 {
     (void) id;
     int fd = open("/dev/null", O_WRONLY);
