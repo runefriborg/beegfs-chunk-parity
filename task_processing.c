@@ -15,7 +15,7 @@
 
 #include "common.h"
 
-#define FILE_TRANSFER_BUFFER_SIZE (1*1024*1024)
+#define FILE_TRANSFER_BUFFER_SIZE (10*1024*1024)
 
 /* Replicates a mkdir -p/--parents command for the dir the filename is in */
 static void mkdir_for_file(const char *filename) {
