@@ -9,7 +9,7 @@ clean:
 	rm -f ${OBJECTS}
 	rm -f ${PROGRAMS}
 
-%.o: %.c %.h common.h Makefile
+%.o: %.c *.h Makefile
 	$(CC) -c $(CPPFLAGS) $(CFLAGS) $< -o $@
 
 xx: xx.o file_info_hash.o task_processing.o
