@@ -17,6 +17,18 @@
 
 #define FILE_TRANSFER_BUFFER_SIZE (1*1024*1024)
 
+/* Replicates a mkdir -p/--parents command for the dir the filename is in */
+static void mkdir_for_file(const char *filename) {
+    char tmp[256];
+    strncpy(tmp, filename, sizeof(tmp));
+    for(char *p = tmp + 1; *p; p++) {
+        if(*p == '/') {
+            *p = 0;
+            mkdir(tmp, S_IRWXU);
+            *p = '/';
+        }
+    }
+}
 
 static
 void send_sync_message_to(int16_t recieving_rank, int msg_size, const uint8_t msg[static msg_size])
@@ -27,8 +39,7 @@ void send_sync_message_to(int16_t recieving_rank, int msg_size, const uint8_t ms
 static
 int open_fileid_readonly(const char *id)
 {
-    (void) id;
-    int fd = open("/dev/zero", O_RDONLY);
+    int fd = open(id, O_RDONLY);
     if (fd < 0)
         return -errno;
     return fd;
@@ -37,8 +48,15 @@ int open_fileid_readonly(const char *id)
 static
 int open_fileid_new_parity(const char *id)
 {
-    (void) id;
-    int fd = open("/dev/null", O_WRONLY);
+    char tmp[256];
+    const char *pdir = getenv("XX_PARITY_DIR");
+    if (pdir == NULL) {
+        fputs("ERROR: XX_PARITY_DIR must be defined! Writing to /dev/null.\n", stderr);
+        return open("/dev/null", O_WRONLY);
+    }
+    snprintf(tmp, sizeof(tmp), "%s%s%s", pdir, (id[0] == '/'? "" : "/"), id);
+    mkdir_for_file(tmp);
+    int fd = creat(tmp, S_IRUSR | S_IWUSR);
     if (fd < 0)
         return -errno;
     return fd;
