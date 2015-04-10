@@ -61,6 +61,7 @@ uint64_t div_round_up(uint64_t a, uint64_t b)
     return (a + (b - 1)) / b;
 }
 
+static
 void xor_parity(uint8_t *restrict dst, size_t nbytes, const uint8_t *data, int nsources)
 {
     for (int j = 0; j < nsources; j++)
@@ -80,6 +81,7 @@ void xor_parity(uint8_t *restrict dst, size_t nbytes, const uint8_t *data, int n
  *  parity_generator:
  *      receives data from chunk sources, calculate and store parity
  */
+static
 void parity_generator(const char *path, const FileInfo *task)
 {
     const int active_source_ranks = active_ranks(task->locations, MAX_LOCS);
@@ -119,6 +121,7 @@ void parity_generator(const char *path, const FileInfo *task)
     close(P_fd);
 }
 
+static
 void chunk_sender(const char *path, const FileInfo *task)
 {
     int16_t coordinator = P_rank(task);
