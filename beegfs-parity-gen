@@ -1,0 +1,97 @@
+#!/bin/bash
+set -o nounset
+set -o pipefail
+set -o errexit
+
+arg1="${1:-}"
+dname="beegfs-parity"
+last_successful_timestamp_file="/var/spool/$dname/last-gen-timestamp"
+
+function usage {
+echo "usage: beegfs-parity-gen --complete|--partial"
+}
+
+case $arg1 in
+    -h|--help)
+    usage
+    exit 0
+    ;;
+    --partial)
+    operation="partial"
+    ;;
+    --complete)
+    operation="complete"
+    ;;
+    *)
+    usage 1>&2
+    exit 1
+    ;;
+esac
+
+if [[ $EUID -ne 0 ]]; then
+    echo "You need root privilege to run this program" 1>&2
+    exit 1
+fi
+if [ "`hostname -s`" != "s10n50" ]; then
+    echo "Should only run on s10n50" 1>&2
+    exit 1
+fi
+
+# Create folders, ignoring errors if already exists
+mkdir --parents "/var/run/$dname/" || true
+mkdir --parents "/var/spool/$dname/" || true
+
+function check_beegfs_servers_online {
+#TODO: any other ways the servers can be down?
+if fhgfs-check-servers | grep -q UNREACHABLE; then
+    return 1
+fi
+return 0
+}
+
+(
+if flock --exclusive --nonblock 500; then
+    if ! check_beegfs_servers_online; then
+        echo "** Error: Not all of beegfs is available" 1>&2
+        exit 1
+    fi
+
+    last_timestamp="0"
+    if [ -f "$last_successful_timestamp_file" ]; then
+        last_timestamp="`cat $last_successful_timestamp_file`"
+    fi
+    if [[ "$last_timestamp" =~ [^0-9] ]] ; then
+        echo "** Error: Stored timestamp does not look like a number" 1>&2
+        echo "          see: $last_successful_timestamp_file" 1>&2
+        exit 1
+    fi
+    timestamp=`date +%s`
+
+    if [ "$operation" == "complete" ] && [ "$last_timestamp" != "0" ]; then
+        echo "** Warning: A complete run has already been done."
+        echo "  If you continue all existing parity chunks will be deleted!"
+        read -p "Continue? [y/N]" -n 1 -r -s reply
+        echo
+        if [[ $reply =~ [Yy] ]]; then
+            echo "Continuing."
+        else
+            echo "Aborting"
+            exit 1
+        fi
+        # Tell everyone to delete all old chunks and dbs
+    fi
+
+    # Placeholders, either we need to mpirun bp-parity-gen and have that spawn
+    # the operations or we need to ssh to each host and start
+    if [ "$operation" == "complete" ]; then
+        echo "find /store01/chunks/ -printf '...' > /tmp/bpg-files"
+    else
+        echo "audit-log-parse-changes-between /store01/ $last_timestamp $timestamp > /tmp/bpg-files"
+    fi
+
+    echo $timestamp > $last_successful_timestamp_file
+else
+    echo "** Error: Can't acquire lock, is the program already running?" 1>&2
+fi
+) 500>"/var/run/$dname/lock"
+
