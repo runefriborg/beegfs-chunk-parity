@@ -52,12 +52,13 @@ unsigned simple_hash(const char *p, int len)
 static
 int eater_rank_from_st(int storage_target)
 {
-    return storage_target + 1;
+    return 1 + 2*storage_target;
 }
 static
 int eater_rank_from_feeder(int feeder)
 {
-    return feeder - MAX_TARGETS;
+    assert((feeder > 0) && (feeder % 2 == 0));
+    return feeder - 1;
 }
 
 /*
@@ -67,12 +68,12 @@ int eater_rank_from_feeder(int feeder)
  * Could be done smarter -- for one there is no gurantee this terminates.
  */
 static
-void select_P(const char *path, FileInfo *fi)
+void select_P(const char *path, FileInfo *fi, unsigned ntargets)
 {
     unsigned H = simple_hash(path, strlen(path));
 choose_P_again:
     H = H ^ simple_hash((const char *)&H, sizeof(H));
-    int16_t P = (H % MAX_TARGETS) + 1;
+    int16_t P = eater_rank_from_st(H % ntargets);
     for (int i = 0; i < MAX_LOCS+1; i++)
         if (fi->locations[i] == P)
             goto choose_P_again;
@@ -189,7 +190,7 @@ void send_remaining_data_to_targets(void)
 }
 
 static
-void feed_targets_with(FILE *input_file)
+void feed_targets_with(FILE *input_file, unsigned ntargets)
 {
     char buf[64*1024];
     ssize_t buf_size = sizeof(buf);
@@ -221,17 +222,16 @@ void feed_targets_with(FILE *input_file)
             uint64_t timestamp_msecs = strtoull(tmp + 1, &tmp, 10);
             (void) timestamp_msecs; /* we ignore fractional part since beegfs doesn't use it */
             uint64_t byte_size = strtoull(size, &tmp, 10);
-            unsigned st = (simple_hash(path, len_of_path)) % MAX_TARGETS;
-            // printf("%u - %" PRIu64 " %*s %" PRIu64 "\n", st, timestamp_secs, len_of_path, path, byte_size);
-            if (eater_rank_from_st(st) != eater_rank_from_feeder(mpi_rank)
-                    && (mpi_rank % 2) == (counter % 2)) {
+            unsigned st = (simple_hash(path, len_of_path)) % ntargets;
+            /* Everyone is still getting the same list of files, so we only
+             * choose some of them */
+            if (((mpi_rank-1)/2 % 2) == (counter % 2))
                 push_to_target(
                         st,
                         path,
                         len_of_path,
                         byte_size,
                         timestamp_secs);
-            }
             counter += 1;
         }
     }
@@ -247,8 +247,18 @@ int main(int argc, char **argv)
     MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &mpi_world_size);
 
-    int eater_ranks[] = {1,2,3,4};
-    int feeder_ranks[] = {5,6,7,8};
+    int ntargets = (mpi_world_size - 1)/2;
+
+    if (ntargets > MAX_TARGETS) {
+        return 1;
+    }
+
+    int eater_ranks[MAX_TARGETS];
+    int feeder_ranks[MAX_TARGETS];
+    for (int i = 0; i < ntargets; i++) {
+        eater_ranks[i] = 1 + 2*i;
+        feeder_ranks[i] = 2 + 2*i;
+    }
 
     /* 
      * When the feeders are done they have nothing else to do.
@@ -262,7 +272,7 @@ int main(int argc, char **argv)
      * */
     MPI_Group everyone, not_everyone;
     MPI_Comm_group(MPI_COMM_WORLD, &everyone);
-    MPI_Group_excl(everyone, MAX_TARGETS, feeder_ranks, &not_everyone);
+    MPI_Group_excl(everyone, ntargets, feeder_ranks, &not_everyone);
     MPI_Comm comm;
     MPI_Comm_create(MPI_COMM_WORLD, not_everyone, &comm);
 
@@ -282,13 +292,11 @@ int main(int argc, char **argv)
      * Finally the global coordinator waits until every feeder has told it that
      * they are done processing - then it tells the eaters.
      */
-    int first_feeder_rank = feeder_ranks[0];
-    int first_eater_rank = eater_ranks[0];
-    int p1_eater = (mpi_rank >= first_eater_rank && mpi_rank < first_feeder_rank);
-    int p1_feeder = (mpi_rank >= first_feeder_rank);
+    int p1_eater = (mpi_rank % 2 == 1);
+    int p1_feeder = (mpi_rank > 0 && mpi_rank % 2 == 0);
     if (mpi_rank == global_coordinator)
     {
-        int still_in_stage_1 = MAX_TARGETS;
+        int still_in_stage_1 = ntargets;
         int failed = 0;
         while (still_in_stage_1 > 0) {
             MPI_Status stat;
@@ -300,12 +308,12 @@ int main(int argc, char **argv)
         }
         /* Inform all eaters that there is no more food */
         uint8_t dummy = 1;
-        for (int i = first_eater_rank; i < first_feeder_rank; i++)
+        for (int i = 1; i < 1 + 2*ntargets; i+=2)
             send_sync_message_to(i, 1, &dummy);
     }
     else if (p1_feeder)
     {
-        feed_targets_with(fopen("sample-input", "r"));
+        feed_targets_with(fopen("sample-input", "r"), ntargets);
     }
     else if (p1_eater)
     {
@@ -347,15 +355,20 @@ int main(int argc, char **argv)
         return 0;
     }
 
+    int mpi_bcast_rank;
+    MPI_Comm_rank(comm, &mpi_bcast_rank);
+    int mpi_bcast_size;
+    MPI_Comm_size(comm, &mpi_bcast_size);
+
     /*
      * We have now sent info on all out chunks, and received info on all chunks
      * that we are responsible for.
      * */
-    for (int i = first_eater_rank; i < first_feeder_rank; i++)
+    for (int i = 1; i < mpi_bcast_size; i++)
     {
         size_t nitems = 0;
         size_t path_bytes = 0;
-        if (mpi_rank == i)
+        if (mpi_bcast_rank == i)
         {
             /*
              * Collect all file info entries in to a packed array that is ready for
@@ -366,7 +379,8 @@ int main(int argc, char **argv)
             {
                 FileInfo *fi = worklist_info + nitems;
                 fih_get(file_info_hash, s, fi);
-                select_P(s, fi);
+                select_P(s, fi, (unsigned)ntargets);
+                printf("%d - size = %zuG\n", mpi_rank, fi->full_file_size/1024/1024/1024);
                 s += strlen(s) + 1;
                 nitems += 1;
             }
@@ -383,7 +397,9 @@ int main(int argc, char **argv)
         const char *s = worklist_keys;
         while (j < nitems)
         {
-            process_task(mpi_rank, s, worklist_info + j);
+            /* Skip large files for faster testing */
+            if (worklist_info[j].full_file_size < 1024*1024*1024)
+                process_task(mpi_rank, s, worklist_info + j);
             s += strlen(s) + 1;
             j += 1;
         }
