@@ -5,7 +5,8 @@ set -o errexit
 
 arg1="${1:-}"
 dname="beegfs-parity"
-last_successful_timestamp_file="/var/spool/$dname/last-gen-timestamp"
+last_successful_timestamp_file="/opt/$dname/spool/last-gen-timestamp"
+groups="store01 store02"
 
 function usage {
 echo "usage: beegfs-parity-gen --complete|--partial"
@@ -37,13 +38,14 @@ if [ "`hostname -s`" != "s10n50" ]; then
     exit 1
 fi
 
-# Create folders, ignoring errors if already exists
-mkdir --parents "/var/run/$dname/" || true
-mkdir --parents "/var/spool/$dname/" || true
+# Make sure all necessary folders are present
+mkdir --parents "/opt/$dname/run"
+mkdir --parents "/opt/$dname/spool"
+mkdir --parents "/opt/$dname/etc"
 
 function check_beegfs_servers_online {
 #TODO: any other ways the servers can be down?
-if fhgfs-check-servers | grep -q UNREACHABLE; then
+if fhgfs-check-servers | grep -q "UNREACHABLE\|failed"; then
     return 1
 fi
 return 0
@@ -81,17 +83,22 @@ if flock --exclusive --nonblock 500; then
         # Tell everyone to delete all old chunks and dbs
     fi
 
-    # Placeholders, either we need to mpirun bp-parity-gen and have that spawn
-    # the operations or we need to ssh to each host and start
-    if [ "$operation" == "complete" ]; then
-        echo "find /store01/chunks/ -printf '...' > /tmp/bpg-files"
-    else
-        echo "audit-log-parse-changes-between /store01/ $last_timestamp $timestamp > /tmp/bpg-files"
-    fi
+    for group in $groups; do
+        if [ "$operation" == "complete" ]; then
+            chunk_src="find /$group/chunks/ -printf '...'"
+        else
+            chunk_src="audit-log-parse-changes-between /$group/ $last_timestamp $timestamp"
+        fi
+        echo `hostname -s` > /opt/$dname/run/hosts
+        # We need two ranks per host so we double it up
+        cat "/opt/$dname/etc/$group.hosts" "/opt/$dname/etc/$group.hosts" | sort >> "/opt/$dname/run/hosts"
+        mpirun="mpirun --hostfile /opt/$dname/run/hosts"
+        echo "$mpirun bp-parity-gen <($chunk_src) $group"
+    done
 
     echo $timestamp > $last_successful_timestamp_file
 else
     echo "** Error: Can't acquire lock, is the program already running?" 1>&2
 fi
-) 500>"/var/run/$dname/lock"
+) 500>"/opt/$dname/run/lock"
 
