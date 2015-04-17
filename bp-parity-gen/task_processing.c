@@ -49,12 +49,19 @@ static
 int open_fileid_new_parity(const char *id)
 {
     char tmp[256];
-    const char *pdir = getenv("XX_PARITY_DIR");
-    if (pdir == NULL) {
-        fputs("ERROR: XX_PARITY_DIR must be defined! Writing to /dev/null.\n", stderr);
+    const char A[] = "/store01/chunks/";
+    const char B[] = "/store02/chunks/";
+    int Alen = sizeof(A)-1;
+    int Blen = sizeof(B)-1;
+    if (strncmp(A, id, Alen) != 0 && strncmp(B, id, Blen) != 0) {
+        fputs("ERROR: All input files must start with /store0_/chunks/!"
+                " Writing to /dev/null.\n", stderr);
         return open("/dev/null", O_WRONLY);
     }
-    snprintf(tmp, sizeof(tmp), "%s%s%s", pdir, (id[0] == '/'? "" : "/"), id);
+    snprintf(tmp, sizeof(tmp),
+            "/store0%c/parity/%s",
+            id[strlen("/store0")],
+            id+Alen);
     mkdir_for_file(tmp);
     int fd = creat(tmp, S_IRUSR | S_IWUSR);
     if (fd < 0)
