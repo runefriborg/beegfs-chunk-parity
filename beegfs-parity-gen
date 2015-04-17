@@ -84,16 +84,11 @@ if flock --exclusive --nonblock 500; then
     fi
 
     for group in $groups; do
-        if [ "$operation" == "complete" ]; then
-            chunk_src="find /$group/chunks/ -printf '...'"
-        else
-            chunk_src="audit-log-parse-changes-between /$group/ $last_timestamp $timestamp"
-        fi
         echo `hostname -s` > /opt/$dname/run/hosts
         # We need two ranks per host so we double it up
         cat "/opt/$dname/etc/$group.hosts" "/opt/$dname/etc/$group.hosts" | sort >> "/opt/$dname/run/hosts"
         mpirun="mpirun --hostfile /opt/$dname/run/hosts"
-        echo "$mpirun bp-parity-gen <($chunk_src) $group"
+        echo "$mpirun bp-parity-gen $operation /$group/chunks/ $last_timestamp $timestamp"
     done
 
     echo $timestamp > $last_successful_timestamp_file
