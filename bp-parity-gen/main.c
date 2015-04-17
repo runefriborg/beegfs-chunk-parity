@@ -10,7 +10,7 @@
 #include "file_info_hash.h"
 
 #include "common.h"
-#define MAX_TARGETS 4
+#define MAX_TARGETS 10
 #define TARGET_BUFFER_SIZE (10*1024*1024)
 #define TARGET_SEND_THRESHOLD (1*1024*1024)
 
@@ -24,20 +24,6 @@ static
 void send_sync_message_to(int16_t recieving_rank, int msg_size, const uint8_t msg[static msg_size])
 {
     MPI_Ssend((void*)msg, msg_size, MPI_BYTE, recieving_rank, 0, MPI_COMM_WORLD);
-}
-
-static
-int next_chr(const char *p, ssize_t len, char c)
-{
-    for (ssize_t i = 0; i < len; i++)
-        if (p[i] == c)
-            return i;
-    return 0;
-}
-static
-int next_zero(const char *p, ssize_t len)
-{
-    return next_chr(p, len, '\0');
 }
 
 static
@@ -197,42 +183,30 @@ void feed_targets_with(FILE *input_file, unsigned ntargets)
     ssize_t buf_offset = 0;
     int read;
     int counter = 0;
-    while ((read = fread(buf + buf_offset, 1, buf_size - buf_offset, input_file)) != 0)
+    while ((read = fread(buf + buf_offset, 1, buf_size - buf_offset, input_file)) > 0)
     {
-        ssize_t buf_alive = buf_offset + read;
+        size_t buf_alive = buf_offset + read;
         const char *bufp = buf;
-        for (;;) {
-            int len_of_timestamp = next_zero(bufp, buf_alive);
-            int len_of_path = next_zero(bufp + len_of_timestamp + 1, buf_alive - len_of_timestamp - 1);
-            int len_of_size = next_zero(bufp + len_of_timestamp + len_of_path + 2, buf_alive - len_of_timestamp - len_of_path - 2);
-            if (len_of_timestamp == 0 || len_of_path == 0 || len_of_size == 0)
-            {
+        while (buf_alive >= 3*sizeof(uint64_t)) {
+            uint64_t timestamp_secs = ((uint64_t *)bufp)[0];
+            uint64_t byte_size = ((uint64_t *)bufp)[1];
+            uint64_t len_of_path = ((uint64_t *)bufp)[2];
+            if (3*sizeof(uint64_t) + len_of_path > buf_alive) {
                 buf_offset = buf_alive;
                 memmove(buf, bufp, buf_alive);
                 break;
             }
-            const char *timestamp = bufp;
-            len_of_timestamp -= 1;
-            const char *path = bufp + len_of_timestamp + 2;
-            const char *size = path + len_of_path + 1;
-            bufp += len_of_timestamp + len_of_path + len_of_size + 4;
-            buf_alive -= len_of_timestamp + len_of_path + len_of_size + 4;
-            char *tmp;
-            uint64_t timestamp_secs = strtoull(timestamp, &tmp, 10);
-            uint64_t timestamp_msecs = strtoull(tmp + 1, &tmp, 10);
-            (void) timestamp_msecs; /* we ignore fractional part since beegfs doesn't use it */
-            uint64_t byte_size = strtoull(size, &tmp, 10);
+            const char *path = bufp + 3*sizeof(uint64_t);
             unsigned st = (simple_hash(path, len_of_path)) % ntargets;
-            /* Everyone is still getting the same list of files, so we only
-             * choose some of them */
-            if (((mpi_rank-1)/2 % 2) == (counter % 2))
-                push_to_target(
-                        st,
-                        path,
-                        len_of_path,
-                        byte_size,
-                        timestamp_secs);
+            push_to_target(
+                    st,
+                    path,
+                    len_of_path,
+                    byte_size,
+                    timestamp_secs);
             counter += 1;
+            bufp += len_of_path + 3*sizeof(uint64_t);
+            buf_alive -= len_of_path + 3*sizeof(uint64_t);
         }
     }
     send_remaining_data_to_targets();
@@ -243,6 +217,16 @@ void feed_targets_with(FILE *input_file, unsigned ntargets)
 
 int main(int argc, char **argv)
 {
+    if (argc != 5) {
+        fputs("We need 4 arguments\n", stdout);
+        return 1;
+    }
+
+    const char *operation = argv[1];
+    const char *chunk_dir = argv[2];
+    const char *timestamp_a = argv[3];
+    const char *timestamp_b = argv[4];
+
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &mpi_world_size);
@@ -313,7 +297,17 @@ int main(int argc, char **argv)
     }
     else if (p1_feeder)
     {
-        feed_targets_with(fopen("sample-input", "r"), ntargets);
+        FILE *slave;
+        char cmd_buf[512];
+        if (strcmp(operation, "complete") == 0)
+            snprintf(cmd_buf, sizeof(cmd_buf), "bp-find-all-chunks %s", chunk_dir);
+        else if (strcmp(operation, "partial") == 0)
+            snprintf(cmd_buf, sizeof(cmd_buf), "audit-find-between %s %s %s", timestamp_a, timestamp_b, chunk_dir);
+        else
+            strcpy(cmd_buf, "cat /dev/null");
+        slave = popen(cmd_buf, "r");
+        feed_targets_with(slave, ntargets);
+        pclose(slave);
     }
     else if (p1_eater)
     {
