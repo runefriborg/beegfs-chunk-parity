@@ -2,11 +2,25 @@
 
 #include "file_info_hash.h"
 
+#include "khash.h"
+KHASH_MAP_INIT_STR(fih, FileInfo)
+
+struct FileInfoHash {
+    khash_t(fih) *h;
+};
+
 FileInfoHash* fih_init()
 {
     FileInfoHash *res = calloc(1, sizeof(FileInfoHash));
     res->h = kh_init(fih);
     return res;
+}
+
+void fih_term(FileInfoHash *fih)
+{
+    kh_destroy(fih, fih->h);
+    memset(fih, 0, sizeof(FileInfoHash));
+    free(fih);
 }
 
 int fih_add_info(FileInfoHash *fih, char *key, uint16_t src, uint64_t size, uint64_t time)

@@ -3,17 +3,12 @@
 
 #include <stdint.h>
 
-#include "khash.h"
 #include "common.h"
 
-KHASH_MAP_INIT_STR(fih, FileInfo)
-
-
-typedef struct {
-    khash_t(fih) *h;
-} FileInfoHash;
+typedef struct FileInfoHash FileInfoHash;
 
 FileInfoHash* fih_init();
+void fih_term(FileInfoHash *fih);
 int fih_add_info(FileInfoHash *fih, char *key, uint16_t src, uint64_t size, uint64_t time);
 int fih_get(const FileInfoHash *fih, const char *key, FileInfo *val);
 

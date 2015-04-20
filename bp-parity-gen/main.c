@@ -381,6 +381,8 @@ int main(int argc, char **argv)
             printf("%d - nitems = %zu\n", mpi_rank, nitems);
             path_bytes = name_bytes_written;
             memcpy(worklist_keys, flat_file_names, path_bytes);
+            fih_term(file_info_hash);
+            file_info_hash = NULL;
         }
         MPI_Bcast(&nitems, sizeof(nitems), MPI_BYTE, i, comm);
         MPI_Bcast(worklist_info, sizeof(FileInfo)*nitems, MPI_BYTE, i, comm);
