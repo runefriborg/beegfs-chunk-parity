@@ -205,8 +205,8 @@ void feed_targets_with(FILE *input_file, unsigned ntargets)
                     byte_size,
                     timestamp_secs);
             counter += 1;
-            bufp += len_of_path + 3*sizeof(uint64_t);
-            buf_alive -= len_of_path + 3*sizeof(uint64_t);
+            bufp += len_of_path + 3*sizeof(uint64_t) + 1;
+            buf_alive -= len_of_path + 3*sizeof(uint64_t) + 1;
         }
     }
     send_remaining_data_to_targets();
@@ -374,7 +374,7 @@ int main(int argc, char **argv)
                 FileInfo *fi = worklist_info + nitems;
                 fih_get(file_info_hash, s, fi);
                 select_P(s, fi, (unsigned)ntargets);
-                printf("%d - size = %zuG\n", mpi_rank, fi->full_file_size/1024/1024/1024);
+                printf("%d - size = %zuM\n", mpi_rank, fi->full_file_size/1024/1024);
                 s += strlen(s) + 1;
                 nitems += 1;
             }
@@ -392,8 +392,7 @@ int main(int argc, char **argv)
         while (j < nitems)
         {
             /* Skip large files for faster testing */
-            if (worklist_info[j].full_file_size < 1024*1024*1024)
-                process_task(mpi_rank, s, worklist_info + j);
+            process_task(mpi_rank, s, worklist_info + j);
             s += strlen(s) + 1;
             j += 1;
         }
