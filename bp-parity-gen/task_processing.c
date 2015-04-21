@@ -172,7 +172,8 @@ void chunk_sender(const char *path, const FileInfo *task)
     close(fd);
 }
 
-void process_task(int16_t my_rank, const char *path, const FileInfo *fi)
+/* Returns non-zero if we are involved in the task */
+int process_task(int16_t my_rank, const char *path, const FileInfo *fi)
 {
     int found_in_srcs = 0;
     for (int j = 0; j < MAX_LOCS; j++)
@@ -181,4 +182,7 @@ void process_task(int16_t my_rank, const char *path, const FileInfo *fi)
         parity_generator(path, fi);
     else if (found_in_srcs && my_rank > 0)
         chunk_sender(path, fi);
+    else
+        return 0;
+    return 1;
 }

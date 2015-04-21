@@ -8,13 +8,14 @@
 #include <mpi.h>
 
 #include "file_info_hash.h"
+#include "persistent_db.h"
 
 #include "common.h"
 #define MAX_TARGETS 10
 #define TARGET_BUFFER_SIZE (10*1024*1024)
 #define TARGET_SEND_THRESHOLD (1*1024*1024)
 
-extern void process_task(int16_t my_rank, const char *path, const FileInfo *fi);
+extern int process_task(int16_t my_rank, const char *path, const FileInfo *fi);
 
 static const int global_coordinator = 0;
 static int mpi_rank;
@@ -48,10 +49,43 @@ int eater_rank_from_feeder(int feeder)
 }
 
 /*
+ * Combine the two `locations` fields, max_chunk_size and full_file_size.
+ * The P value is only copied over if it isn't present in `dst->locations`
+ */
+static void fill_in_missing_fields(FileInfo *dst, const FileInfo *src)
+{
+    dst->max_chunk_size = MAX(dst->max_chunk_size, src->max_chunk_size);
+    dst->full_file_size = src->full_file_size;
+    uint16_t old_P = src->locations[P_INDEX];
+    int old_P_present_in_dst = 0;
+    /* The locations are just unsorted arrays so we have to do a n^2 solution
+     * here, but n is at most 15 so it won't be too bad.
+     * Would be a lot nicer if locations was a simple bit mask -- even if it
+     * would limit the max number of storage targets. */
+    int i = 0;
+    for (; src->locations[i] != 0 && i < 15; i++)
+    {
+        int16_t t = src->locations[i];
+        int already_in = 0;
+        int j = 0;
+        for (; dst->locations[j] != 0 && j < 15; j++) {
+            if (dst->locations[j] == t)
+                already_in = 1;
+            if (dst->locations[j] == old_P)
+                old_P_present_in_dst = 1;
+        }
+        if (!already_in)
+            dst->locations[j] = t;
+    }
+    if (!old_P_present_in_dst)
+        dst->locations[P_INDEX] = old_P;
+}
+
+/*
  * Selecting the P rank is done by hashing the path once and then iteratively
  * hashing the hash result until we can map it to a rank that is not already
  * mentioned in the list of locations.
- * Could be done smarter -- for one there is no gurantee this terminates.
+ * Could be done smarter -- for one there is no guarantee this terminates.
  */
 static
 void select_P(const char *path, FileInfo *fi, unsigned ntargets)
@@ -349,6 +383,8 @@ int main(int argc, char **argv)
         return 0;
     }
 
+    PersistentDB *pdb = pdb_init();
+
     int mpi_bcast_rank;
     MPI_Comm_rank(comm, &mpi_bcast_rank);
     int mpi_bcast_size;
@@ -371,9 +407,14 @@ int main(int argc, char **argv)
             const char *s = flat_file_names;
             while (s < flat_file_names + name_bytes_written && *s != '\0')
             {
+                FileInfo prev_fi;
+                int has_an_old_version = pdb_get(pdb, s, &prev_fi);
                 FileInfo *fi = worklist_info + nitems;
                 fih_get(file_info_hash, s, fi);
-                select_P(s, fi, (unsigned)ntargets);
+                if (has_an_old_version)
+                    fill_in_missing_fields(fi, &prev_fi);
+                if (fi->locations[P_INDEX] == 0)
+                    select_P(s, fi, (unsigned)ntargets);
                 printf("%d - size = %zuM\n", mpi_rank, fi->full_file_size/1024/1024);
                 s += strlen(s) + 1;
                 nitems += 1;
@@ -393,12 +434,16 @@ int main(int argc, char **argv)
         const char *s = worklist_keys;
         while (j < nitems)
         {
-            /* Skip large files for faster testing */
-            process_task(mpi_rank, s, worklist_info + j);
-            s += strlen(s) + 1;
+            size_t s_len = strlen(s);
+            if (process_task(mpi_rank, s, worklist_info + j))
+                pdb_set(pdb, s, s_len, worklist_info + j);
+            s += s_len + 1;
             j += 1;
         }
     }
+
+    pdb_term(pdb);
+    pdb = NULL;
 
     MPI_Finalize();
     return 0;
