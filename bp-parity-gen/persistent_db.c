@@ -65,14 +65,14 @@ void pdb_set(PersistentDB *pdb, const char *key, size_t keylen, const FileInfo *
             &errmsg);
 }
 
-int pdb_get(const PersistentDB *pdb, const char *key, FileInfo *val)
+int pdb_get(const PersistentDB *pdb, const char *key, size_t keylen, FileInfo *val)
 {
     size_t fi_len;
     char *errmsg;
     FileInfo *pfi = (FileInfo *)leveldb_get(
             pdb->db,
             pdb->ropts,
-            key, strlen(key),
+            key, keylen,
             &fi_len,
             &errmsg);
     if (pfi == NULL)

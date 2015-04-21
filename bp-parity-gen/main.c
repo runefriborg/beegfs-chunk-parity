@@ -407,14 +407,16 @@ int main(int argc, char **argv)
             const char *s = flat_file_names;
             while (s < flat_file_names + name_bytes_written && *s != '\0')
             {
+                size_t s_len = strlen(s);
                 FileInfo prev_fi;
-                int has_an_old_version = pdb_get(pdb, s, &prev_fi);
+                int has_an_old_version = pdb_get(pdb, s, s_len, &prev_fi);
                 FileInfo *fi = worklist_info + nitems;
                 fih_get(file_info_hash, s, fi);
                 if (has_an_old_version)
                     fill_in_missing_fields(fi, &prev_fi);
                 if (fi->locations[P_INDEX] == 0)
                     select_P(s, fi, (unsigned)ntargets);
+                pdb_set(pdb, s, s_len, fi);
                 printf("%d - size = %zuM\n", mpi_rank, fi->full_file_size/1024/1024);
                 s += strlen(s) + 1;
                 nitems += 1;
