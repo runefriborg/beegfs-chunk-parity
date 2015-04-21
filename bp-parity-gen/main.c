@@ -49,13 +49,12 @@ int eater_rank_from_feeder(int feeder)
 }
 
 /*
- * Combine the two `locations` fields, max_chunk_size and full_file_size.
+ * Combine the two `locations` fields and max_chunk_size.
  * The P value is only copied over if it isn't present in `dst->locations`
  */
 static void fill_in_missing_fields(FileInfo *dst, const FileInfo *src)
 {
     dst->max_chunk_size = MAX(dst->max_chunk_size, src->max_chunk_size);
-    dst->full_file_size = src->full_file_size;
     uint16_t old_P = src->locations[P_INDEX];
     int old_P_present_in_dst = 0;
     /* The locations are just unsorted arrays so we have to do a n^2 solution
@@ -417,8 +416,7 @@ int main(int argc, char **argv)
                 if (fi->locations[P_INDEX] == 0)
                     select_P(s, fi, (unsigned)ntargets);
                 pdb_set(pdb, s, s_len, fi);
-                printf("%d - size = %zuM\n", mpi_rank, fi->full_file_size/1024/1024);
-                s += strlen(s) + 1;
+                s += s_len + 1;
                 nitems += 1;
             }
             printf("%d - nitems = %zu\n", mpi_rank, nitems);

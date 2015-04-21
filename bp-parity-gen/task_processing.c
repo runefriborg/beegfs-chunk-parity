@@ -109,30 +109,34 @@ void xor_parity(uint8_t *restrict dst, size_t nbytes, const uint8_t *data, int n
 static
 void parity_generator(const char *path, const FileInfo *task)
 {
+#define IRECV_ALL(ii, loc, size) do { \
+    for (int ii = 0; ii < active_source_ranks; ii++) \
+        MPI_Irecv((loc), (size), MPI_BYTE, task->locations[ii], \
+                0, MPI_COMM_WORLD, &source_messages[ii]); \
+    } while(0)
+
     const int active_source_ranks = active_ranks(task->locations, MAX_LOCS);
     size_t buffer_size = MIN(FILE_TRANSFER_BUFFER_SIZE, task->max_chunk_size);
     uint8_t *data = calloc(active_source_ranks, FILE_TRANSFER_BUFFER_SIZE);
     uint8_t *P_block = calloc(1, FILE_TRANSFER_BUFFER_SIZE);
+    uint64_t chunk_sizes[active_source_ranks];
     int P_fd = open_fileid_new_parity(path);
     int P_local_write_error = (P_fd < 0);
     int expected_messages = div_round_up(task->max_chunk_size, FILE_TRANSFER_BUFFER_SIZE);
     MPI_Request source_messages[active_source_ranks];
     MPI_Status source_stat[active_source_ranks];
+    IRECV_ALL(src, chunk_sizes + src, sizeof(uint64_t));
+    MPI_Waitall(active_source_ranks, source_messages, source_stat);
+    uint64_t full_size = 0;
+    for (int i = 0; i < active_source_ranks; i++)
+        full_size += chunk_sizes[i];
+    P_local_write_error = (write(P_fd, &full_size, sizeof(full_size)) <= 0);
     for (int msg_i = 0; msg_i < expected_messages; msg_i++)
     {
         /* begin async receive from all sources and wait for all receives to
          * finish. Ideally we would do calculations and local I/O on previously
          * received data before waiting -- but this is only a first draft. */
-        for (int i = 0; i < active_source_ranks; i++) {
-            MPI_Irecv(
-                    data + i*buffer_size,
-                    buffer_size,
-                    MPI_BYTE,
-                    task->locations[i],
-                    0,
-                    MPI_COMM_WORLD,
-                    &source_messages[i]);
-        }
+        IRECV_ALL(src, data + src*buffer_size, buffer_size);
         MPI_Waitall(active_source_ranks, source_messages, source_stat);
         /* calculate P and write to disk */
         xor_parity(P_block, buffer_size, data, active_source_ranks);
@@ -144,6 +148,7 @@ void parity_generator(const char *path, const FileInfo *task)
     free(P_block);
     free(data);
     close(P_fd);
+#undef IRECV_ALL
 }
 
 static
@@ -155,9 +160,15 @@ void chunk_sender(const char *path, const FileInfo *task)
     uint8_t *data = calloc(1, FILE_TRANSFER_BUFFER_SIZE);
     int have_had_error = 0;
     int fd = open_fileid_readonly(path);
-    if (fd < 0) {
+    uint64_t fd_size = 0;
+    if (fd < 0)
         have_had_error = 1;
+    else {
+        struct stat st;
+        fstat(fd, &st);
+        fd_size = st.st_size;
     }
+    send_sync_message_to(coordinator, sizeof(fd_size), (uint8_t *)&fd_size);
     uint64_t read_from_fd = 0;
     while (read_from_fd < data_in_fd)
     {

@@ -31,7 +31,6 @@ int fih_add_info(FileInfoHash *fih, char *key, uint16_t src, uint64_t size, uint
     FileInfo *fi = &kh_val(h, it);
     if (r == 1)
         memset(fi, 0, sizeof(FileInfo));
-    fi->full_file_size += size;
     fi->max_chunk_size = MAX(fi->max_chunk_size, size);
     fi->timestamp = time;
     int i = 0;
