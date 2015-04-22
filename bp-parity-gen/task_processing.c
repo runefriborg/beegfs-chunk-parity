@@ -69,15 +69,13 @@ int open_fileid_new_parity(const char *id)
     return fd;
 }
 
-#define P_rank(fi) ((fi)->locations[P_INDEX])
+#define P_rank(fi) ((int16_t)P_RANK((fi)->locations))
 
 static
-int active_ranks(const int16_t *ranks, int n)
+int active_ranks(uint64_t locations)
 {
-    int i = 0;
-    for (; i < n && ranks[i] != 0; i++)
-        ;
-    return i;
+    /* gcc specific function to count number of ones */
+    return __builtin_popcountll(locations & L_MASK);
 }
 
 static
@@ -111,11 +109,15 @@ void parity_generator(const char *path, const FileInfo *task)
 {
 #define IRECV_ALL(ii, loc, size) do { \
     for (int ii = 0; ii < active_source_ranks; ii++) \
-        MPI_Irecv((loc), (size), MPI_BYTE, task->locations[ii], \
+        MPI_Irecv((loc), (size), MPI_BYTE, ranks[ii], \
                 0, MPI_COMM_WORLD, &source_messages[ii]); \
     } while(0)
 
-    const int active_source_ranks = active_ranks(task->locations, MAX_LOCS);
+    const int active_source_ranks = active_ranks(task->locations);
+    int ranks[MAX_STORAGE_TARGETS];
+    for (int i = 0, j = 0; i < MAX_STORAGE_TARGETS; i++)
+        if (TEST_BIT(task->locations, i))
+            ranks[j++] = i;
     size_t buffer_size = MIN(FILE_TRANSFER_BUFFER_SIZE, task->max_chunk_size);
     uint8_t *data = calloc(active_source_ranks, FILE_TRANSFER_BUFFER_SIZE);
     uint8_t *P_block = calloc(1, FILE_TRANSFER_BUFFER_SIZE);
@@ -186,12 +188,9 @@ void chunk_sender(const char *path, const FileInfo *task)
 /* Returns non-zero if we are involved in the task */
 int process_task(int16_t my_rank, const char *path, const FileInfo *fi)
 {
-    int found_in_srcs = 0;
-    for (int j = 0; j < MAX_LOCS; j++)
-        found_in_srcs |= (fi->locations[j] == my_rank);
     if (P_rank(fi) == my_rank)
         parity_generator(path, fi);
-    else if (found_in_srcs && my_rank > 0)
+    else if (my_rank > 0 && TEST_BIT(fi->locations, my_rank))
         chunk_sender(path, fi);
     else
         return 0;

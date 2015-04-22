@@ -55,29 +55,10 @@ int eater_rank_from_feeder(int feeder)
 static void fill_in_missing_fields(FileInfo *dst, const FileInfo *src)
 {
     dst->max_chunk_size = MAX(dst->max_chunk_size, src->max_chunk_size);
-    uint16_t old_P = src->locations[P_INDEX];
-    int old_P_present_in_dst = 0;
-    /* The locations are just unsorted arrays so we have to do a n^2 solution
-     * here, but n is at most 15 so it won't be too bad.
-     * Would be a lot nicer if locations was a simple bit mask -- even if it
-     * would limit the max number of storage targets. */
-    int i = 0;
-    for (; src->locations[i] != 0 && i < 15; i++)
-    {
-        int16_t t = src->locations[i];
-        int already_in = 0;
-        int j = 0;
-        for (; dst->locations[j] != 0 && j < 15; j++) {
-            if (dst->locations[j] == t)
-                already_in = 1;
-            if (dst->locations[j] == old_P)
-                old_P_present_in_dst = 1;
-        }
-        if (!already_in)
-            dst->locations[j] = t;
-    }
-    if (!old_P_present_in_dst)
-        dst->locations[P_INDEX] = old_P;
+    uint64_t old_P = P_RANK(src->locations);
+    dst->locations = (dst->locations | src->locations) & L_MASK;
+    if (TEST_BIT(dst->locations, old_P) == 0)
+        dst->locations = WITH_P(dst->locations, old_P);
 }
 
 /*
@@ -92,11 +73,10 @@ void select_P(const char *path, FileInfo *fi, unsigned ntargets)
     unsigned H = simple_hash(path, strlen(path));
 choose_P_again:
     H = H ^ simple_hash((const char *)&H, sizeof(H));
-    int16_t P = eater_rank_from_st(H % ntargets);
-    for (int i = 0; i < MAX_LOCS+1; i++)
-        if (fi->locations[i] == P)
-            goto choose_P_again;
-    fi->locations[P_INDEX] = P;
+    uint64_t P = eater_rank_from_st(H % ntargets);
+    if (TEST_BIT(fi->locations, P))
+        goto choose_P_again;
+    fi->locations = WITH_P(fi->locations, P);
 }
 
 typedef struct {
@@ -413,7 +393,7 @@ int main(int argc, char **argv)
                 fih_get(file_info_hash, s, fi);
                 if (has_an_old_version)
                     fill_in_missing_fields(fi, &prev_fi);
-                if (fi->locations[P_INDEX] == 0)
+                if (P_RANK(fi->locations) == 0)
                     select_P(s, fi, (unsigned)ntargets);
                 pdb_set(pdb, s, s_len, fi);
                 s += s_len + 1;

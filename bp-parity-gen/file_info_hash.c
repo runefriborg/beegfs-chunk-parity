@@ -33,11 +33,7 @@ int fih_add_info(FileInfoHash *fih, char *key, uint16_t src, uint64_t size, uint
         memset(fi, 0, sizeof(FileInfo));
     fi->max_chunk_size = MAX(fi->max_chunk_size, size);
     fi->timestamp = time;
-    int i = 0;
-    for (; fi->locations[i] != 0 && i < 15; i++)
-    {
-    }
-    fi->locations[i] = src;
+    fi->locations |= (1 << src);
     return (r == 0);
 }
 
