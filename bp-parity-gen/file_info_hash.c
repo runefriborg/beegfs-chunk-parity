@@ -23,7 +23,7 @@ void fih_term(FileInfoHash *fih)
     free(fih);
 }
 
-int fih_add_info(FileInfoHash *fih, char *key, uint16_t src, uint64_t size, uint64_t time)
+int fih_add_info(FileInfoHash *fih, char *key, int src, uint64_t size, uint64_t time)
 {
     khash_t(fih) *h = fih->h;
     int r;

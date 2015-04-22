@@ -9,7 +9,7 @@ typedef struct FileInfoHash FileInfoHash;
 
 FileInfoHash* fih_init();
 void fih_term(FileInfoHash *fih);
-int fih_add_info(FileInfoHash *fih, char *key, uint16_t src, uint64_t size, uint64_t time);
+int fih_add_info(FileInfoHash *fih, char *key, int src, uint64_t size, uint64_t time);
 int fih_get(const FileInfoHash *fih, const char *key, FileInfo *val);
 
 #endif

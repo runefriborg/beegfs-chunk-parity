@@ -5,7 +5,7 @@
 
 #define MAX_STORAGE_TARGETS 56
 #define TEST_BIT(x,i) ((x) & (1ULL << (i)))
-#define P_RANK(loc) ((loc) >> 56)
+#define GET_P(loc) ((int)((loc) >> 56))
 #define P_MASK UINT64_C(0xFF00000000000000)
 #define L_MASK UINT64_C(0x00FFFFFFFFFFFFFF)
 #define WITH_P(loc, P) (((loc) & L_MASK) | (((P) << 56) & P_MASK))

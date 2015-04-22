@@ -17,6 +17,8 @@
 
 #define FILE_TRANSFER_BUFFER_SIZE (10*1024*1024)
 
+extern int st2rank[MAX_STORAGE_TARGETS];
+
 /* Replicates a mkdir -p/--parents command for the dir the filename is in */
 static void mkdir_for_file(const char *filename) {
     char tmp[256];
@@ -31,7 +33,7 @@ static void mkdir_for_file(const char *filename) {
 }
 
 static
-void send_sync_message_to(int16_t recieving_rank, int msg_size, const uint8_t msg[static msg_size])
+void send_sync_message_to(int recieving_rank, int msg_size, const uint8_t msg[static msg_size])
 {
     MPI_Send((void*)msg, msg_size, MPI_BYTE, recieving_rank, 0, MPI_COMM_WORLD);
 }
@@ -69,7 +71,7 @@ int open_fileid_new_parity(const char *id)
     return fd;
 }
 
-#define P_rank(fi) ((int16_t)P_RANK((fi)->locations))
+#define P_rank(fi) (st2rank[GET_P((fi)->locations)])
 
 static
 int active_ranks(uint64_t locations)
@@ -117,7 +119,7 @@ void parity_generator(const char *path, const FileInfo *task)
     int ranks[MAX_STORAGE_TARGETS];
     for (int i = 0, j = 0; i < MAX_STORAGE_TARGETS; i++)
         if (TEST_BIT(task->locations, i))
-            ranks[j++] = i;
+            ranks[j++] = st2rank[i];
     size_t buffer_size = MIN(FILE_TRANSFER_BUFFER_SIZE, task->max_chunk_size);
     uint8_t *data = calloc(active_source_ranks, FILE_TRANSFER_BUFFER_SIZE);
     uint8_t *P_block = calloc(1, FILE_TRANSFER_BUFFER_SIZE);
@@ -156,7 +158,7 @@ void parity_generator(const char *path, const FileInfo *task)
 static
 void chunk_sender(const char *path, const FileInfo *task)
 {
-    int16_t coordinator = P_rank(task);
+    int coordinator = P_rank(task);
     uint64_t data_in_fd = task->max_chunk_size;
     size_t buffer_size = MIN(FILE_TRANSFER_BUFFER_SIZE, task->max_chunk_size);
     uint8_t *data = calloc(1, FILE_TRANSFER_BUFFER_SIZE);
@@ -186,11 +188,11 @@ void chunk_sender(const char *path, const FileInfo *task)
 }
 
 /* Returns non-zero if we are involved in the task */
-int process_task(int16_t my_rank, const char *path, const FileInfo *fi)
+int process_task(int my_st, const char *path, const FileInfo *fi)
 {
-    if (P_rank(fi) == my_rank)
+    if (GET_P(fi->locations) == my_st)
         parity_generator(path, fi);
-    else if (my_rank > 0 && TEST_BIT(fi->locations, my_rank))
+    else if (my_st >= 0 && TEST_BIT(fi->locations, my_st))
         chunk_sender(path, fi);
     else
         return 0;

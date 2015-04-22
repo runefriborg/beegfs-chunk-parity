@@ -15,14 +15,16 @@
 #define TARGET_BUFFER_SIZE (10*1024*1024)
 #define TARGET_SEND_THRESHOLD (1*1024*1024)
 
-extern int process_task(int16_t my_rank, const char *path, const FileInfo *fi);
+extern int process_task(int my_st, const char *path, const FileInfo *fi);
 
 static const int global_coordinator = 0;
 static int mpi_rank;
 static int mpi_world_size;
 
+int st2rank[MAX_STORAGE_TARGETS];
+
 static
-void send_sync_message_to(int16_t recieving_rank, int msg_size, const uint8_t msg[static msg_size])
+void send_sync_message_to(int recieving_rank, int msg_size, const uint8_t msg[static msg_size])
 {
     MPI_Ssend((void*)msg, msg_size, MPI_BYTE, recieving_rank, 0, MPI_COMM_WORLD);
 }
@@ -42,10 +44,11 @@ int eater_rank_from_st(int storage_target)
     return 1 + 2*storage_target;
 }
 static
-int eater_rank_from_feeder(int feeder)
+int st_from_feeder_rank(int feeder)
 {
     assert((feeder > 0) && (feeder % 2 == 0));
-    return feeder - 1;
+    int eater = feeder - 1;
+    return (eater  - 1)/2;
 }
 
 /*
@@ -55,7 +58,7 @@ int eater_rank_from_feeder(int feeder)
 static void fill_in_missing_fields(FileInfo *dst, const FileInfo *src)
 {
     dst->max_chunk_size = MAX(dst->max_chunk_size, src->max_chunk_size);
-    uint64_t old_P = P_RANK(src->locations);
+    uint64_t old_P = GET_P(src->locations);
     dst->locations = (dst->locations | src->locations) & L_MASK;
     if (TEST_BIT(dst->locations, old_P) == 0)
         dst->locations = WITH_P(dst->locations, old_P);
@@ -73,7 +76,7 @@ void select_P(const char *path, FileInfo *fi, unsigned ntargets)
     unsigned H = simple_hash(path, strlen(path));
 choose_P_again:
     H = H ^ simple_hash((const char *)&H, sizeof(H));
-    uint64_t P = eater_rank_from_st(H % ntargets);
+    uint64_t P = H % ntargets;
     if (TEST_BIT(fi->locations, P))
         goto choose_P_again;
     fi->locations = WITH_P(fi->locations, P);
@@ -334,7 +337,7 @@ int main(int argc, char **argv)
             /* parse and add data */
             int actually_received = 0;
             MPI_Get_count(&stat, MPI_BYTE, &actually_received);
-            uint16_t src = (uint16_t)stat.MPI_SOURCE;
+            int src = stat.MPI_SOURCE;
             int i = 0;
             while (i < actually_received) {
                 packed_file_info *pfi = (packed_file_info *)(recv_buffer+i);
@@ -348,7 +351,7 @@ int main(int argc, char **argv)
                 name_bytes_written += pfi->path_len + 1;
                 if (fih_add_info(file_info_hash,
                         n,
-                        eater_rank_from_feeder(src),
+                        st_from_feeder_rank(src),
                         pfi->byte_size,
                         pfi->timestamp))
                     name_bytes_written -= pfi->path_len + 1;
@@ -368,6 +371,11 @@ int main(int argc, char **argv)
     MPI_Comm_rank(comm, &mpi_bcast_rank);
     int mpi_bcast_size;
     MPI_Comm_size(comm, &mpi_bcast_size);
+    int my_st = -1;
+    if (p1_eater)
+        my_st = (mpi_rank - 1) / 2;
+    for (int i = 0; i < ntargets; i++)
+        st2rank[i] = eater_rank_from_st(i);
 
     /*
      * We have now sent info on all out chunks, and received info on all chunks
@@ -393,7 +401,7 @@ int main(int argc, char **argv)
                 fih_get(file_info_hash, s, fi);
                 if (has_an_old_version)
                     fill_in_missing_fields(fi, &prev_fi);
-                if (P_RANK(fi->locations) == 0)
+                if (GET_P(fi->locations) == 0)
                     select_P(s, fi, (unsigned)ntargets);
                 pdb_set(pdb, s, s_len, fi);
                 s += s_len + 1;
@@ -415,7 +423,7 @@ int main(int argc, char **argv)
         while (j < nitems)
         {
             size_t s_len = strlen(s);
-            if (process_task(mpi_rank, s, worklist_info + j))
+            if (process_task(my_st, s, worklist_info + j))
                 pdb_set(pdb, s, s_len, worklist_info + j);
             s += s_len + 1;
             j += 1;
