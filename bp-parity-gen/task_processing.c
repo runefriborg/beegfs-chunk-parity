@@ -44,11 +44,12 @@ int open_fileid_readonly(const char *id)
     int fd = open(id, O_RDONLY);
     if (fd < 0)
         return -errno;
+    posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_WILLNEED);
     return fd;
 }
 
 static
-int open_fileid_new_parity(const char *id)
+int open_fileid_new_parity(const char *id, ssize_t expected_size)
 {
     char tmp[256];
     const char A[] = "/store01/chunks/";
@@ -68,6 +69,7 @@ int open_fileid_new_parity(const char *id)
     int fd = creat(tmp, S_IRUSR | S_IWUSR);
     if (fd < 0)
         return -errno;
+    posix_fallocate(fd, 0, expected_size);
     return fd;
 }
 
@@ -127,7 +129,7 @@ void parity_generator(const char *path, const FileInfo *task)
     uint8_t *P_block = calloc(1, FILE_TRANSFER_BUFFER_SIZE);
     size_t buffer_size = MIN(FILE_TRANSFER_BUFFER_SIZE, task->max_chunk_size);
     int expected_messages = div_round_up(task->max_chunk_size, FILE_TRANSFER_BUFFER_SIZE);
-    int P_fd = open_fileid_new_parity(path);
+    int P_fd = open_fileid_new_parity(path, expected_messages*buffer_size + 8);
     int P_local_write_error = (P_fd < 0);
 
     for (int msg_i = 0; msg_i < expected_messages; msg_i++)
