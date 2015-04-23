@@ -115,26 +115,21 @@ void parity_generator(const char *path, const FileInfo *task)
                 0, MPI_COMM_WORLD, &source_messages[ii]); \
     } while(0)
 
+    MPI_Request source_messages[MAX_STORAGE_TARGETS];
+    MPI_Status source_stat[MAX_STORAGE_TARGETS];
     const int active_source_ranks = active_ranks(task->locations);
     int ranks[MAX_STORAGE_TARGETS];
     for (int i = 0, j = 0; i < MAX_STORAGE_TARGETS; i++)
         if (TEST_BIT(task->locations, i))
             ranks[j++] = st2rank[i];
-    size_t buffer_size = MIN(FILE_TRANSFER_BUFFER_SIZE, task->max_chunk_size);
+
     uint8_t *data = calloc(active_source_ranks, FILE_TRANSFER_BUFFER_SIZE);
     uint8_t *P_block = calloc(1, FILE_TRANSFER_BUFFER_SIZE);
-    uint64_t chunk_sizes[active_source_ranks];
+    size_t buffer_size = MIN(FILE_TRANSFER_BUFFER_SIZE, task->max_chunk_size);
+    int expected_messages = div_round_up(task->max_chunk_size, FILE_TRANSFER_BUFFER_SIZE);
     int P_fd = open_fileid_new_parity(path);
     int P_local_write_error = (P_fd < 0);
-    int expected_messages = div_round_up(task->max_chunk_size, FILE_TRANSFER_BUFFER_SIZE);
-    MPI_Request source_messages[active_source_ranks];
-    MPI_Status source_stat[active_source_ranks];
-    IRECV_ALL(src, chunk_sizes + src, sizeof(uint64_t));
-    MPI_Waitall(active_source_ranks, source_messages, source_stat);
-    uint64_t full_size = 0;
-    for (int i = 0; i < active_source_ranks; i++)
-        full_size += chunk_sizes[i];
-    P_local_write_error = (write(P_fd, &full_size, sizeof(full_size)) <= 0);
+
     for (int msg_i = 0; msg_i < expected_messages; msg_i++)
     {
         /* begin async receive from all sources and wait for all receives to
@@ -149,6 +144,17 @@ void parity_generator(const char *path, const FileInfo *task)
             P_local_write_error |= (w <= 0);
         }
     }
+
+    /* We only need the full file size when rebuilding, so it can be stored in
+     * the parity file, rather than the databse. */
+    int64_t full_size = 0;
+    uint64_t chunk_sizes[MAX_STORAGE_TARGETS];
+    IRECV_ALL(src, chunk_sizes + src, sizeof(uint64_t));
+    MPI_Waitall(active_source_ranks, source_messages, source_stat);
+    for (int i = 0; i < active_source_ranks; i++)
+        full_size += chunk_sizes[i];
+    P_local_write_error |= (write(P_fd, &full_size, sizeof(full_size)) <= 0);
+
     free(P_block);
     free(data);
     close(P_fd);
@@ -172,7 +178,6 @@ void chunk_sender(const char *path, const FileInfo *task)
         fstat(fd, &st);
         fd_size = st.st_size;
     }
-    send_sync_message_to(coordinator, sizeof(fd_size), (uint8_t *)&fd_size);
     uint64_t read_from_fd = 0;
     while (read_from_fd < data_in_fd)
     {
@@ -183,6 +188,7 @@ void chunk_sender(const char *path, const FileInfo *task)
         read_from_fd += buffer_size;
         send_sync_message_to(coordinator, buffer_size, data);
     }
+    send_sync_message_to(coordinator, sizeof(fd_size), (uint8_t *)&fd_size);
     free(data);
     close(fd);
 }
