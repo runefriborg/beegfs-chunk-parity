@@ -127,9 +127,11 @@ void parity_generator(const char *path, const FileInfo *task)
 
     uint8_t *data = calloc(active_source_ranks, FILE_TRANSFER_BUFFER_SIZE);
     uint8_t *P_block = calloc(1, FILE_TRANSFER_BUFFER_SIZE);
-    size_t buffer_size = MIN(FILE_TRANSFER_BUFFER_SIZE, task->max_chunk_size);
-    int expected_messages = div_round_up(task->max_chunk_size, FILE_TRANSFER_BUFFER_SIZE);
-    int P_fd = open_fileid_new_parity(path, expected_messages*buffer_size + 8);
+    uint64_t max_cs = task->max_chunk_size;
+    uint64_t data_left = max_cs;
+    size_t buffer_size = MIN(FILE_TRANSFER_BUFFER_SIZE, max_cs);
+    int expected_messages = div_round_up(max_cs, FILE_TRANSFER_BUFFER_SIZE);
+    int P_fd = open_fileid_new_parity(path, max_cs + 8);
     int P_local_write_error = (P_fd < 0);
 
     for (int msg_i = 0; msg_i < expected_messages; msg_i++)
@@ -142,7 +144,9 @@ void parity_generator(const char *path, const FileInfo *task)
         /* calculate P and write to disk */
         xor_parity(P_block, buffer_size, data, active_source_ranks);
         if (!P_local_write_error) {
-            ssize_t w = write(P_fd, P_block, buffer_size);
+            ssize_t wsize = MIN(buffer_size, data_left);
+            ssize_t w = write(P_fd, P_block, wsize);
+            data_left -= wsize;
             P_local_write_error |= (w <= 0);
         }
     }
