@@ -30,6 +30,13 @@ void send_sync_message_to(int recieving_rank, int msg_size, const uint8_t msg[st
 }
 
 static
+int sts_in_use(uint64_t locations)
+{
+    /* gcc specific function to count number of ones */
+    return __builtin_popcountll(locations & L_MASK);
+}
+
+static
 unsigned simple_hash(const char *p, int len)
 {
     unsigned h = 5381;
@@ -73,6 +80,8 @@ static void fill_in_missing_fields(FileInfo *dst, const FileInfo *src)
 static
 void select_P(const char *path, FileInfo *fi, unsigned ntargets)
 {
+    if (sts_in_use(fi->locations) == (int)ntargets)
+        return;
     unsigned H = simple_hash(path, strlen(path));
 choose_P_again:
     H = H ^ simple_hash((const char *)&H, sizeof(H));
