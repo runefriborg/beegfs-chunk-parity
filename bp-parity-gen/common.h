@@ -9,6 +9,7 @@
 #define P_MASK UINT64_C(0xFF00000000000000)
 #define L_MASK UINT64_C(0x00FFFFFFFFFFFFFF)
 #define WITH_P(loc, P) (((loc) & L_MASK) | (((P) << 56) & P_MASK))
+#define NO_P UINT64_C(0xFF)
 
 typedef struct {
     uint64_t max_chunk_size;

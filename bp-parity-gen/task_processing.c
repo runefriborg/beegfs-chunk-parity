@@ -202,6 +202,9 @@ void chunk_sender(const char *path, const FileInfo *task)
 /* Returns non-zero if we are involved in the task */
 int process_task(int my_st, const char *path, const FileInfo *fi)
 {
+    if (GET_P(fi->locations) == NO_P)
+        return 0;
+
     if (GET_P(fi->locations) == my_st)
         parity_generator(path, fi);
     else if (my_st >= 0 && TEST_BIT(fi->locations, my_st))

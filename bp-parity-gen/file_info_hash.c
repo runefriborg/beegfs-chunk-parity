@@ -29,8 +29,10 @@ int fih_add_info(FileInfoHash *fih, char *key, int src, uint64_t size, uint64_t 
     int r;
     khint_t it = kh_put_fih(h, key, &r);
     FileInfo *fi = &kh_val(h, it);
-    if (r == 1)
+    if (r == 1) {
         memset(fi, 0, sizeof(FileInfo));
+        fi->locations = WITH_P(0ULL, NO_P);
+    }
     fi->max_chunk_size = MAX(fi->max_chunk_size, size);
     fi->timestamp = time;
     fi->locations |= (1 << src);

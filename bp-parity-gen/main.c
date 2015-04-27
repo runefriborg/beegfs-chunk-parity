@@ -401,7 +401,7 @@ int main(int argc, char **argv)
                 fih_get(file_info_hash, s, fi);
                 if (has_an_old_version)
                     fill_in_missing_fields(fi, &prev_fi);
-                if (GET_P(fi->locations) == 0)
+                if (GET_P(fi->locations) == NO_P)
                     select_P(s, fi, (unsigned)ntargets);
                 pdb_set(pdb, s, s_len, fi);
                 s += s_len + 1;
