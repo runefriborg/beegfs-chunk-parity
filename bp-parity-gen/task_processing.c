@@ -125,7 +125,8 @@ void parity_generator(const char *path, const FileInfo *task)
         if (TEST_BIT(task->locations, i))
             ranks[j++] = st2rank[i];
 
-    uint8_t *data = calloc(active_source_ranks, FILE_TRANSFER_BUFFER_SIZE);
+    uint8_t *data_a = calloc(active_source_ranks, FILE_TRANSFER_BUFFER_SIZE);
+    uint8_t *data_b = calloc(active_source_ranks, FILE_TRANSFER_BUFFER_SIZE);
     uint8_t *P_block = calloc(1, FILE_TRANSFER_BUFFER_SIZE);
     uint64_t max_cs = task->max_chunk_size;
     uint64_t data_left = max_cs;
@@ -136,19 +137,22 @@ void parity_generator(const char *path, const FileInfo *task)
 
     for (int msg_i = 0; msg_i < expected_messages; msg_i++)
     {
-        /* begin async receive from all sources and wait for all receives to
-         * finish. Ideally we would do calculations and local I/O on previously
-         * received data before waiting -- but this is only a first draft. */
-        IRECV_ALL(src, data + src*buffer_size, buffer_size);
+        if (msg_i == 0)
+            IRECV_ALL(src, data_a + src*buffer_size, buffer_size);
         MPI_Waitall(active_source_ranks, source_messages, source_stat);
-        /* calculate P and write to disk */
-        xor_parity(P_block, buffer_size, data, active_source_ranks);
+        if (msg_i + 1 != expected_messages)
+            IRECV_ALL(src, data_b + src*buffer_size, buffer_size);
+        /* calculate P and write to disk while waiting for next data chunk */
+        xor_parity(P_block, buffer_size, data_a, active_source_ranks);
         if (!P_local_write_error) {
             ssize_t wsize = MIN(buffer_size, data_left);
             ssize_t w = write(P_fd, P_block, wsize);
             data_left -= wsize;
             P_local_write_error |= (w <= 0);
         }
+        uint8_t *tmp = data_a;
+        data_a = data_b;
+        data_b = tmp;
     }
 
     /* We only need the full file size when rebuilding, so it can be stored in
@@ -162,7 +166,8 @@ void parity_generator(const char *path, const FileInfo *task)
     P_local_write_error |= (write(P_fd, &full_size, sizeof(full_size)) <= 0);
 
     free(P_block);
-    free(data);
+    free(data_a);
+    free(data_b);
     close(P_fd);
 #undef IRECV_ALL
 }
