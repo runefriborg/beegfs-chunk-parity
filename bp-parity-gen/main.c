@@ -248,7 +248,7 @@ int main(int argc, char **argv)
     }
 
     const char *operation = argv[1];
-    const char *chunk_dir = argv[2];
+    const char *store_dir = argv[2];
     const char *timestamp_a = argv[3];
     const char *timestamp_b = argv[4];
 
@@ -325,9 +325,9 @@ int main(int argc, char **argv)
         FILE *slave;
         char cmd_buf[512];
         if (strcmp(operation, "complete") == 0)
-            snprintf(cmd_buf, sizeof(cmd_buf), "bp-find-all-chunks %s", chunk_dir);
+            snprintf(cmd_buf, sizeof(cmd_buf), "bp-find-all-chunks %s/chunks", store_dir);
         else if (strcmp(operation, "partial") == 0)
-            snprintf(cmd_buf, sizeof(cmd_buf), "audit-find-between %s %s %s", timestamp_a, timestamp_b, chunk_dir);
+            snprintf(cmd_buf, sizeof(cmd_buf), "audit-find-between %s %s %s/chunks", timestamp_a, timestamp_b, store_dir);
         else
             strcpy(cmd_buf, "cat /dev/null");
         slave = popen(cmd_buf, "r");
