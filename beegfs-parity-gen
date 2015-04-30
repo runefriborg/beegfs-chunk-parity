@@ -6,7 +6,7 @@ set -o errexit
 arg1="${1:-}"
 dname="beegfs-parity"
 last_successful_timestamp_file="/opt/$dname/spool/last-gen-timestamp"
-groups="store01 store02"
+groups="store01"
 
 function usage {
 echo "usage: beegfs-parity-gen --complete|--partial"
@@ -84,11 +84,12 @@ if flock --exclusive --nonblock 500; then
     fi
 
     for group in $groups; do
+        mkdir --parents "/opt/$dname/spool/$group"
         echo `hostname -s` > /opt/$dname/run/hosts
         # We need two ranks per host so we double it up
-        cat "/opt/$dname/etc/$group.hosts" "/opt/$dname/etc/$group.hosts" | sort >> "/opt/$dname/run/hosts"
+        paste -d '\n' "/opt/$dname/etc/$group.hosts" "/opt/$dname/etc/$group.hosts" >> "/opt/$dname/run/hosts"
         mpirun="mpirun --hostfile /opt/$dname/run/hosts"
-        $mpirun ./bp-parity-gen/bp-parity-gen $operation /$group $last_timestamp $timestamp
+        $mpirun ./bp-parity-gen/bp-parity-gen $operation /$group $last_timestamp $timestamp /opt/$dname/spool/$group/data
     done
 
     echo $timestamp > $last_successful_timestamp_file

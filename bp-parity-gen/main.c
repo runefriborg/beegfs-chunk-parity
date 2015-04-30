@@ -27,21 +27,16 @@ static int mpi_world_size;
 int st2rank[MAX_STORAGE_TARGETS];
 int rank2st[MAX_STORAGE_TARGETS*2+1];
 
+typedef struct { int id, rank; } Target;
+typedef struct {
+    int ntargets;
+    Target targetIDs[MAX_TARGETS];
+} RunData;
+
 static
 void send_sync_message_to(int recieving_rank, int msg_size, const uint8_t msg[static msg_size])
 {
     MPI_Ssend((void*)msg, msg_size, MPI_BYTE, recieving_rank, 0, MPI_COMM_WORLD);
-}
-
-static int uint64_cmp(const void *a, const void *b)
-{
-    uint64_t va = *(uint64_t *)a;
-    uint64_t vb = *(uint64_t *)b;
-    if (va < vb)
-        return -1;
-    if (va > vb)
-        return 1;
-    return 0;
 }
 
 static
@@ -256,8 +251,8 @@ void feed_targets_with(FILE *input_file, unsigned ntargets)
 
 int main(int argc, char **argv)
 {
-    if (argc != 5) {
-        fputs("We need 4 arguments\n", stdout);
+    if (argc != 6) {
+        fputs("We need 5 arguments\n", stdout);
         return 1;
     }
 
@@ -265,6 +260,7 @@ int main(int argc, char **argv)
     const char *store_dir = argv[2];
     const char *timestamp_a = argv[3];
     const char *timestamp_b = argv[4];
+    const char *data_file = argv[5];
 
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
@@ -276,40 +272,68 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    int last_run_fd = -1;
+    RunData last_run;
+    memset(&last_run, 0, sizeof(RunData));
+    if (mpi_rank == 0) {
+        last_run_fd = open(data_file, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+        read(last_run_fd, &last_run, sizeof(RunData));
+    }
+
     /* Create mapping from storage targets to ranks, and vice versa */
-    uint64_t targetIDs[2*MAX_TARGETS] = {0};
-    uint64_t targetID = 0;
+    Target targetIDs[2*MAX_TARGETS] = {{0,0}};
+    Target targetID = {0,0};
     if (mpi_rank != 0)
     {
         int store_fd = open(store_dir, O_DIRECTORY | O_RDONLY);
-        int target_ID_fd = openat(store_fd, "targetID", O_RDONLY);
-        char targetID_s[8] = {0};
+        int target_ID_fd = openat(store_fd, "targetNumID", O_RDONLY);
+        char targetID_s[20] = {0};
         read(target_ID_fd, targetID_s, sizeof(targetID_s));
         close(target_ID_fd);
         close(store_fd);
-        targetID = (atoll(targetID_s) << 32) | mpi_rank;
+        targetID.id = atoi(targetID_s);
+        targetID.rank = mpi_rank;
     }
     MPI_Gather(
-            &targetID, 8, MPI_BYTE,
-            targetIDs, 8, MPI_BYTE,
+            &targetID, sizeof(Target), MPI_BYTE,
+            targetIDs, sizeof(Target), MPI_BYTE,
             0,
             MPI_COMM_WORLD);
     if (mpi_rank == 0) {
-        for (int i = 0; i < 2*ntargets; i+=2)
-            assert((targetIDs[i] >> 32) == (targetIDs[i+1] >> 32));
+        for (int i = 1; i < 2*ntargets+1; i+=2)
+            assert(targetIDs[i].id == targetIDs[i+1].id);
         for (int i = 0; i < ntargets; i++)
             targetIDs[i] = targetIDs[2*i+1];
-        qsort(targetIDs, ntargets, sizeof(uint64_t), uint64_cmp);
+        int k = last_run.ntargets;
+        for (int i = 0; i < last_run.ntargets; i++)
+            last_run.targetIDs[i].rank = -1;
+        for (int i = 0; i < ntargets; i++) {
+            Target target = targetIDs[i];
+            int j = 0;
+            for (; j < last_run.ntargets; j++)
+                if (last_run.targetIDs[j].id == target.id) {
+                    last_run.targetIDs[j] = target;
+                    break;
+                }
+            if (j + 1 >= last_run.ntargets)
+                last_run.targetIDs[k++] = target;
+        }
+        last_run.ntargets = ntargets;
         rank2st[0] = -1;
         for (int i = 0; i < ntargets; i++)
         {
-            st2rank[i] = (int)(targetIDs[i] & UINT64_C(0xFFFFFFFF));
+            st2rank[i] = last_run.targetIDs[i].rank;
             rank2st[st2rank[i]] = i;
             rank2st[st2rank[i]+1] = i;
         }
     }
     MPI_Bcast(st2rank, sizeof(st2rank), MPI_BYTE, 0, MPI_COMM_WORLD);
     MPI_Bcast(rank2st, sizeof(rank2st), MPI_BYTE, 0, MPI_COMM_WORLD);
+
+    if (mpi_rank == 0) {
+        write(last_run_fd, &last_run, sizeof(RunData));
+        close(last_run_fd);
+    }
 
     int eater_ranks[MAX_TARGETS];
     int feeder_ranks[MAX_TARGETS];
@@ -457,7 +481,6 @@ int main(int argc, char **argv)
                     fill_in_missing_fields(fi, &prev_fi);
                 if (GET_P(fi->locations) == NO_P)
                     select_P(s, fi, (unsigned)ntargets);
-                pdb_set(pdb, s, s_len, fi);
                 s += s_len + 1;
                 nitems += 1;
             }
@@ -477,8 +500,8 @@ int main(int argc, char **argv)
         while (j < nitems)
         {
             size_t s_len = strlen(s);
-            if (process_task(my_st, s, worklist_info + j))
-                pdb_set(pdb, s, s_len, worklist_info + j);
+            process_task(my_st, s, worklist_info + j);
+            pdb_set(pdb, s, s_len, worklist_info + j);
             s += s_len + 1;
             j += 1;
         }
