@@ -5,6 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <unistd.h>
+#include <fcntl.h>
+
 #include <mpi.h>
 
 #include "file_info_hash.h"
@@ -22,11 +25,23 @@ static int mpi_rank;
 static int mpi_world_size;
 
 int st2rank[MAX_STORAGE_TARGETS];
+int rank2st[MAX_STORAGE_TARGETS*2+1];
 
 static
 void send_sync_message_to(int recieving_rank, int msg_size, const uint8_t msg[static msg_size])
 {
     MPI_Ssend((void*)msg, msg_size, MPI_BYTE, recieving_rank, 0, MPI_COMM_WORLD);
+}
+
+static int uint64_cmp(const void *a, const void *b)
+{
+    uint64_t va = *(uint64_t *)a;
+    uint64_t vb = *(uint64_t *)b;
+    if (va < vb)
+        return -1;
+    if (va > vb)
+        return 1;
+    return 0;
 }
 
 static
@@ -48,14 +63,13 @@ unsigned simple_hash(const char *p, int len)
 static
 int eater_rank_from_st(int storage_target)
 {
-    return 1 + 2*storage_target;
+    return st2rank[storage_target];
 }
 static
 int st_from_feeder_rank(int feeder)
 {
     assert((feeder > 0) && (feeder % 2 == 0));
-    int eater = feeder - 1;
-    return (eater  - 1)/2;
+    return rank2st[feeder];
 }
 
 /*
@@ -262,6 +276,41 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    /* Create mapping from storage targets to ranks, and vice versa */
+    uint64_t targetIDs[2*MAX_TARGETS] = {0};
+    uint64_t targetID = 0;
+    if (mpi_rank != 0)
+    {
+        int store_fd = open(store_dir, O_DIRECTORY | O_RDONLY);
+        int target_ID_fd = openat(store_fd, "targetID", O_RDONLY);
+        char targetID_s[8] = {0};
+        read(target_ID_fd, targetID_s, sizeof(targetID_s));
+        close(target_ID_fd);
+        close(store_fd);
+        targetID = (atoll(targetID_s) << 32) | mpi_rank;
+    }
+    MPI_Gather(
+            &targetID, 8, MPI_BYTE,
+            targetIDs, 8, MPI_BYTE,
+            0,
+            MPI_COMM_WORLD);
+    if (mpi_rank == 0) {
+        for (int i = 0; i < 2*ntargets; i+=2)
+            assert((targetIDs[i] >> 32) == (targetIDs[i+1] >> 32));
+        for (int i = 0; i < ntargets; i++)
+            targetIDs[i] = targetIDs[2*i+1];
+        qsort(targetIDs, ntargets, sizeof(uint64_t), uint64_cmp);
+        rank2st[0] = -1;
+        for (int i = 0; i < ntargets; i++)
+        {
+            st2rank[i] = (int)(targetIDs[i] & UINT64_C(0xFFFFFFFF));
+            rank2st[st2rank[i]] = i;
+            rank2st[st2rank[i]+1] = i;
+        }
+    }
+    MPI_Bcast(st2rank, sizeof(st2rank), MPI_BYTE, 0, MPI_COMM_WORLD);
+    MPI_Bcast(rank2st, sizeof(rank2st), MPI_BYTE, 0, MPI_COMM_WORLD);
+
     int eater_ranks[MAX_TARGETS];
     int feeder_ranks[MAX_TARGETS];
     for (int i = 0; i < ntargets; i++) {
@@ -380,11 +429,7 @@ int main(int argc, char **argv)
     MPI_Comm_rank(comm, &mpi_bcast_rank);
     int mpi_bcast_size;
     MPI_Comm_size(comm, &mpi_bcast_size);
-    int my_st = -1;
-    if (p1_eater)
-        my_st = (mpi_rank - 1) / 2;
-    for (int i = 0; i < ntargets; i++)
-        st2rank[i] = eater_rank_from_st(i);
+    int my_st = rank2st[mpi_rank];
 
     /*
      * We have now sent info on all out chunks, and received info on all chunks
