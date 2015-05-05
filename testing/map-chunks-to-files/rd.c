@@ -8,15 +8,26 @@
 /* limits.h defines "PATH_MAX". */
 #include <limits.h>
 
+#define READDIR_THREADS 8
+
 #include "mutexqueue.h"
 
+struct circqueue * dirqueue;
+
 /* List the files in "dir_name". */
+static void list_dir () {
+  DIR * d;
+  char * dir_name;
 
-static void
-list_dir (const char * dir_name)
-{
-    DIR * d;
+  while (1) {
+        
+    dir_name = dequeue(dirqueue);
 
+    if (dir_name == NULL) {
+      break;
+    }
+
+    dir_name = dequeue(dirqueue);
     /* Open the directory specified by "dir_name". */
 
     d = opendir (dir_name);
@@ -39,19 +50,9 @@ list_dir (const char * dir_name)
             break;
         }
         d_name = entry->d_name;
-        /* Print the name of the file and directory. */
-	printf ("%s/%s\n", dir_name, d_name);
-
-#if 0
-	/* If you don't want to print the directories, use the
-	   following line: */
-
         if (! (entry->d_type & DT_DIR)) {
 	    printf ("%s/%s\n", dir_name, d_name);
 	}
-
-#endif /* 0 */
-
 
         if (entry->d_type & DT_DIR) {
 
@@ -60,7 +61,7 @@ list_dir (const char * dir_name)
             if (strcmp (d_name, "..") != 0 &&
                 strcmp (d_name, ".") != 0) {
                 int path_length;
-                char path[PATH_MAX];
+                char * path = (char *) malloc(PATH_MAX*sizeof(char));
  
                 path_length = snprintf (path, PATH_MAX,
                                         "%s/%s", dir_name, d_name);
@@ -69,8 +70,10 @@ list_dir (const char * dir_name)
                     fprintf (stderr, "Path length has got too long.\n");
                     exit (EXIT_FAILURE);
                 }
+
+		/* add path to dirqueue */
                 /* Recursively call "list_dir" with the new path. */
-                list_dir (path);
+		enqueue(dirqueue, path);
             }
 	}
     }
@@ -80,11 +83,19 @@ list_dir (const char * dir_name)
                  dir_name, strerror (errno));
         exit (EXIT_FAILURE);
     }
+    
+    free(dir_name);
+  }
 }
 
 int main ()
 {
-    list_dir ("/faststorage");
-    return 0;
+  char * dir = (char *) malloc(PATH_MAX*sizeof(char));
+  snprintf (dir, PATH_MAX, "%s", "/faststorage/home/runef");
+  
+  dirqueue= mutexqueue(READDIR_THREADS, 1000);
+  enqueue(dirqueue, dir);
+  list_dir ();
+  return 0;
 }
 
