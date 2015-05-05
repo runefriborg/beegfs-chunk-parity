@@ -8,7 +8,7 @@
 /* limits.h defines "PATH_MAX". */
 #include <limits.h>
 
-#define READDIR_THREADS 8
+#define READDIR_THREADS 1
 
 #include "mutexqueue.h"
 
@@ -19,17 +19,14 @@ static void list_dir () {
   DIR * d;
   char * dir_name;
 
-  while (1) {
-        
+  while (1) {        
     dir_name = dequeue(dirqueue);
 
     if (dir_name == NULL) {
       break;
     }
 
-    dir_name = dequeue(dirqueue);
     /* Open the directory specified by "dir_name". */
-
     d = opendir (dir_name);
 
     /* Check it was opened. */
@@ -96,6 +93,8 @@ int main ()
   dirqueue= mutexqueue(READDIR_THREADS, 1000);
   enqueue(dirqueue, dir);
   list_dir ();
+
+  mutexqueue_destroy(dirqueue);
   return 0;
 }
 
