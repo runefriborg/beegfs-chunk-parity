@@ -8,14 +8,14 @@
 /* limits.h defines "PATH_MAX". */
 #include <limits.h>
 
-#define READDIR_THREADS 1
+#define READDIR_THREADS 4
 
 #include "mutexqueue.h"
 
 struct circqueue * dirqueue;
 
 /* List the files in "dir_name". */
-static void list_dir () {
+void * list_dir (void * x) {
   DIR * d;
   char * dir_name;
 
@@ -23,6 +23,7 @@ static void list_dir () {
     dir_name = dequeue(dirqueue);
 
     if (dir_name == NULL) {
+      printf("B");
       break;
     }
 
@@ -48,7 +49,8 @@ static void list_dir () {
         }
         d_name = entry->d_name;
         if (! (entry->d_type & DT_DIR)) {
-	    printf ("%s/%s\n", dir_name, d_name);
+	  //printf ("%s/%s\n", dir_name, d_name);
+	  printf(".");
 	}
 
         if (entry->d_type & DT_DIR) {
@@ -62,14 +64,14 @@ static void list_dir () {
  
                 path_length = snprintf (path, PATH_MAX,
                                         "%s/%s", dir_name, d_name);
-                printf ("%s\n", path);
+                //printf ("%s\n", path);
+		printf(".");
                 if (path_length >= PATH_MAX) {
                     fprintf (stderr, "Path length has got too long.\n");
                     exit (EXIT_FAILURE);
                 }
 
 		/* add path to dirqueue */
-                /* Recursively call "list_dir" with the new path. */
 		enqueue(dirqueue, path);
             }
 	}
@@ -83,18 +85,41 @@ static void list_dir () {
     
     free(dir_name);
   }
+  pthread_exit(NULL);
 }
 
-int main ()
-{
-  char * dir = (char *) malloc(PATH_MAX*sizeof(char));
-  snprintf (dir, PATH_MAX, "%s", "/faststorage/home/runef");
+int main(int argc, char *argv[]) {
+  pthread_t threads[READDIR_THREADS];
+  pthread_attr_t attr;
+  int i;
   
-  dirqueue= mutexqueue(READDIR_THREADS, 1000);
-  enqueue(dirqueue, dir);
-  list_dir ();
+  char * dir = (char *) malloc(PATH_MAX*sizeof(char));
+ 
+  if(argc == 1) {
+    snprintf (dir, PATH_MAX, "%s", ".");
+  } else {
+    snprintf (dir, PATH_MAX, "%s", argv[1]);
+  }
 
+  dirqueue= mutexqueue(READDIR_THREADS, 100000);
+  enqueue(dirqueue, dir);
+
+  /* For portability, explicitly create threads in a joinable state */
+  pthread_attr_init(&attr);
+  pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+  for(i = 0; i < READDIR_THREADS; i++) {
+    pthread_create(&threads[i], &attr, list_dir, 0);
+  }
+
+  /* Wait for all threads to complete */
+  for (i=0; i<READDIR_THREADS; i++) {
+    pthread_join(threads[i], NULL);
+  }
+  /* Clean up and exit */
+  pthread_attr_destroy(&attr);
   mutexqueue_destroy(dirqueue);
+  pthread_exit(NULL);
+
   return 0;
 }
 

@@ -1,9 +1,9 @@
 #include <pthread.h>
 
-pthread_mutex_t _mutex;
-pthread_cond_t _cond;
 
 struct circqueue {
+  pthread_mutex_t _mutex;
+  pthread_cond_t _cond;
   int front,rear;
   int capacity;
   int thread_count;
@@ -24,15 +24,15 @@ struct circqueue *mutexqueue(int thread_count, int size) {
    if(!q->array)return NULL;
 
    /* Initialize mutex and condition variable objects */
-   pthread_mutex_init(&_mutex, NULL);
-   pthread_cond_init (&_cond, NULL);
+   pthread_mutex_init(&q->_mutex, NULL);
+   pthread_cond_init (&q->_cond, NULL);
 
    return q;
 }
 
 void mutexqueue_destroy(struct circqueue *q) {
-  pthread_mutex_destroy(&_mutex);
-  pthread_cond_destroy(&_cond);
+  pthread_mutex_destroy(&q->_mutex);
+  pthread_cond_destroy(&q->_cond);
   free(q->array);
   free(q);
 }
@@ -52,7 +52,7 @@ int queuesize(struct circqueue *q) {
 
 void enqueue(struct circqueue *q,char * x) {
 
-  pthread_mutex_lock(&_mutex);
+  pthread_mutex_lock(&q->_mutex);
    if(isfullqueue(q))
       printf("queue overflow\n");
    else{
@@ -62,39 +62,43 @@ void enqueue(struct circqueue *q,char * x) {
          q->front=q->rear;
       }
       if (q->thread_waiting > 0) {
-	pthread_cond_signal(&_cond);
+	pthread_cond_signal(&q->_cond);
       }
    }
-   pthread_mutex_unlock(&_mutex);
+   pthread_mutex_unlock(&q->_mutex);
 }
 
 char * dequeue(struct circqueue *q) {
    char * data;
 
-   pthread_mutex_lock(&_mutex);
+   pthread_mutex_lock(&q->_mutex);
    if(isemptyqueue(q)) {
       q->thread_waiting++;
+      printf("waitinc");
       while (1) {
 	if (q->thread_waiting == q->thread_count) {
 	  // all threads are waiting. Quit!
-	  pthread_mutex_unlock(&_mutex);
+	  printf("quit");
+	  pthread_cond_broadcast(&q->_cond);
+	  pthread_mutex_unlock(&q->_mutex);
 	  return NULL;
 	}
-	pthread_cond_wait(&_cond, &_mutex);
+	printf("wait");
+	pthread_cond_wait(&q->_cond, &q->_mutex);
 	if (!isemptyqueue(q)) {
 	  break;
 	}
       }
       q->thread_waiting--;
    }
-   else {
-      data=q->array[q->front];
-      if(q->front==q->rear)
-         q->front=q->rear=-1;
-      else
-         q->front=(q->front+1)%q->capacity;
-   }
-   pthread_mutex_unlock(&_mutex);
+   
+   data=q->array[q->front];
+   if(q->front==q->rear)
+     q->front=q->rear=-1;
+   else
+     q->front=(q->front+1)%q->capacity;
+
+   pthread_mutex_unlock(&q->_mutex);
 
    return data;
 }
