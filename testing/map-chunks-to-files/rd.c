@@ -9,21 +9,25 @@
 #include <limits.h>
 
 #define READDIR_THREADS 4
+#define QUEUE_SIZE 10000000
 
 #include "mutexqueue.h"
 
 struct circqueue * dirqueue;
 
+
+
 /* List the files in "dir_name". */
 void * list_dir (void * x) {
   DIR * d;
   char * dir_name;
-
+  FILE * fp = x;
+  struct dirent dirent_data; 
+ 
   while (1) {        
     dir_name = dequeue(dirqueue);
 
     if (dir_name == NULL) {
-      printf("B");
       break;
     }
 
@@ -39,18 +43,24 @@ void * list_dir (void * x) {
     while (1) {
         struct dirent * entry;
         const char * d_name;
+	int retval;
 
         /* "Readdir" gets subsequent entries from "d". */
-        entry = readdir (d);
-        if (! entry) {
-            /* There are no more entries in this directory, so break
-               out of the while loop. */
-            break;
+        retval = readdir_r (d, &dirent_data, &entry);
+        if (retval != 0) {
+	  fprintf (stderr, "Readdir_r failed");
+	  exit(EXIT_FAILURE);
         }
+ 
+        // readdir_r returns NULL in *result if the end 
+        // of the directory stream is reached
+        if (entry == NULL) {
+	  break;
+	}
+
         d_name = entry->d_name;
         if (! (entry->d_type & DT_DIR)) {
-	  //printf ("%s/%s\n", dir_name, d_name);
-	  printf(".");
+	  fprintf (fp, "%s/%s\n", dir_name, d_name);
 	}
 
         if (entry->d_type & DT_DIR) {
@@ -65,14 +75,16 @@ void * list_dir (void * x) {
                 path_length = snprintf (path, PATH_MAX,
                                         "%s/%s", dir_name, d_name);
                 //printf ("%s\n", path);
-		printf(".");
                 if (path_length >= PATH_MAX) {
                     fprintf (stderr, "Path length has got too long.\n");
                     exit (EXIT_FAILURE);
                 }
 
 		/* add path to dirqueue */
-		enqueue(dirqueue, path);
+		if (enqueue(dirqueue, path) != 0) {
+                    fprintf (stderr, "Enqueue failed\n");
+		    exit (EXIT_FAILURE);
+                }
             }
 	}
     }
@@ -91,7 +103,9 @@ void * list_dir (void * x) {
 int main(int argc, char *argv[]) {
   pthread_t threads[READDIR_THREADS];
   pthread_attr_t attr;
+  FILE *fp[READDIR_THREADS];
   int i;
+  char tmp[64];
   
   char * dir = (char *) malloc(PATH_MAX*sizeof(char));
  
@@ -101,20 +115,33 @@ int main(int argc, char *argv[]) {
     snprintf (dir, PATH_MAX, "%s", argv[1]);
   }
 
-  dirqueue= mutexqueue(READDIR_THREADS, 100000);
+  dirqueue= mutexqueue(READDIR_THREADS, QUEUE_SIZE);
   enqueue(dirqueue, dir);
+
+  /* Create output files */
+  for (i = 0; i<READDIR_THREADS; i++) {
+    sprintf(tmp, "output.%d", i);
+    fp[i] = fopen(tmp, "w");
+  }
+     
 
   /* For portability, explicitly create threads in a joinable state */
   pthread_attr_init(&attr);
   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
   for(i = 0; i < READDIR_THREADS; i++) {
-    pthread_create(&threads[i], &attr, list_dir, 0);
+    pthread_create(&threads[i], &attr, list_dir, fp[i]);
   }
 
   /* Wait for all threads to complete */
   for (i=0; i<READDIR_THREADS; i++) {
     pthread_join(threads[i], NULL);
   }
+
+  /* Close output files */
+  for (i = 0; i<READDIR_THREADS; i++) {
+    fclose(fp[i]);
+  }
+
   /* Clean up and exit */
   pthread_attr_destroy(&attr);
   mutexqueue_destroy(dirqueue);

@@ -42,7 +42,7 @@ int isemptyqueue(struct circqueue *q) {
 }
 
 int isfullqueue(struct circqueue *q) {
-   return((q->rear+1)%q->capacity==q->rear);
+   return((q->rear+1)%q->capacity==q->front);
 }
 
 int queuesize(struct circqueue *q) {
@@ -50,22 +50,25 @@ int queuesize(struct circqueue *q) {
 }
 
 
-void enqueue(struct circqueue *q,char * x) {
+int enqueue(struct circqueue *q,char * x) {
 
   pthread_mutex_lock(&q->_mutex);
-   if(isfullqueue(q))
-      printf("queue overflow\n");
-   else{
-      q->rear=(q->rear+1)%q->capacity;
-      q->array[q->rear]=x;
-      if(q->front==-1) {
-         q->front=q->rear;
-      }
-      if (q->thread_waiting > 0) {
-	pthread_cond_signal(&q->_cond);
-      }
-   }
-   pthread_mutex_unlock(&q->_mutex);
+  if (isfullqueue(q)) {
+    pthread_mutex_unlock(&q->_mutex);
+    fprintf(stderr, "queue overflow\n");
+    return 1;
+  }
+  
+  q->rear=(q->rear+1)%q->capacity;
+  q->array[q->rear]=x;
+  if(q->front==-1) {
+    q->front=q->rear;
+  }
+  if (q->thread_waiting > 0) {
+    pthread_cond_signal(&q->_cond);
+  }
+  pthread_mutex_unlock(&q->_mutex);
+  return 0;
 }
 
 char * dequeue(struct circqueue *q) {
@@ -74,16 +77,13 @@ char * dequeue(struct circqueue *q) {
    pthread_mutex_lock(&q->_mutex);
    if(isemptyqueue(q)) {
       q->thread_waiting++;
-      printf("waitinc");
       while (1) {
 	if (q->thread_waiting == q->thread_count) {
 	  // all threads are waiting. Quit!
-	  printf("quit");
-	  pthread_cond_broadcast(&q->_cond);
+	  pthread_cond_signal(&q->_cond);
 	  pthread_mutex_unlock(&q->_mutex);
 	  return NULL;
 	}
-	printf("wait");
 	pthread_cond_wait(&q->_cond, &q->_mutex);
 	if (!isemptyqueue(q)) {
 	  break;
