@@ -2,10 +2,14 @@
 
 PID=$$
 
-# Settings
+# Args
 DIR=""
 LEVELDB=""
 CACHEDIR="."
+
+# Settings
+THREADS=4
+BEEGFSMOUNT="/faststorage"
 
 failed_params=0
 
@@ -29,7 +33,7 @@ Usage:
 
 Parameters explained:
   -d    Directory located on a BeeGFS mount
-  -o    Output file containing a chunk map in leveldb format
+  -o    Output file containing a chunk map in leveldb format (not located in BeeGFS mount!)
   -c    Cache directory used for large temporary files (not located in BeeGFS mount!)
           default cache directory = "."
 EOF
@@ -42,9 +46,14 @@ BINDIR=${PWD}
 # Change to CACHEDIR
 cd ${CACHEDIR}
 
+# Create file lists
+${BINDIR}/filelist-runner ${#BEEGFSMOUNT} "${DIR}"
 
-${BINDIR}/filelist-runner "${DIR}"
+# Get entry
+#cat output.0 | fhgfs-ctl --getentryinfo --nomappings --verbose - 
 
+# Cleanup
+#rm -f ${CACHEDIR}/output.*
 
 # Change to PWD
 cd ${PWD}

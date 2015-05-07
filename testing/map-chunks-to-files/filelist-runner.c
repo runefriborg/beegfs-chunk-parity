@@ -14,8 +14,7 @@
 #include "mutexqueue.h"
 
 struct circqueue * dirqueue;
-
-
+int SKIPCHARS;
 
 /* List the files in "dir_name". */
 void * list_dir (void * x) {
@@ -60,7 +59,11 @@ void * list_dir (void * x) {
 
         d_name = entry->d_name;
         if (! (entry->d_type & DT_DIR)) {
-	  fprintf (fp, "%s/%s\n", dir_name, d_name);
+          if (strlen(dir_name) > SKIPCHARS) {
+	    fprintf (fp, "%s/%s\n", dir_name + SKIPCHARS, d_name);
+          } else {
+	    fprintf (fp, "/%s\n", d_name);
+          }
 	}
 
         if (entry->d_type & DT_DIR) {
@@ -74,7 +77,6 @@ void * list_dir (void * x) {
  
                 path_length = snprintf (path, PATH_MAX,
                                         "%s/%s", dir_name, d_name);
-                //printf ("%s\n", path);
                 if (path_length >= PATH_MAX) {
                     fprintf (stderr, "Path length has got too long.\n");
                     exit (EXIT_FAILURE);
@@ -109,10 +111,13 @@ int main(int argc, char *argv[]) {
   
   char * dir = (char *) malloc(PATH_MAX*sizeof(char));
  
-  if(argc == 1) {
-    snprintf (dir, PATH_MAX, "%s", ".");
+  if(argc == 3) {
+    snprintf (dir, PATH_MAX, "%s", argv[2]);
+    dir= realpath(dir, NULL);
+    SKIPCHARS=atoi(argv[1]);
   } else {
-    snprintf (dir, PATH_MAX, "%s", argv[1]);
+    printf("Usage: filelist-runner <skipNchars> <directory>\n");
+    exit(1);
   }
 
   dirqueue= mutexqueue(READDIR_THREADS, QUEUE_SIZE);
