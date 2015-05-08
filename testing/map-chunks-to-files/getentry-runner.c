@@ -8,7 +8,7 @@
 /* limits.h defines "PATH_MAX". */
 #include <limits.h>
 
-#define GETENTRY_THREADS 1
+#define GETENTRY_THREADS 4
 #define GETENTRY_COMMAND   "cat output.%d | fhgfs-ctl --getentryinfo --nomappings --unmounted -"
 #define PATH_IDENTIFIER    "Path: "
 #define ENTRYID_IDENTIFIER "EntryID: "
@@ -30,6 +30,12 @@ void * getentry_worker (void * x) {
   char cmd[PATH_MAX];
   struct arg_struct *args = (struct arg_struct *) x;
 
+  size_t path_identifier_len = strlen(PATH_IDENTIFIER);
+  size_t entryid_identifier_len = strlen(ENTRYID_IDENTIFIER);
+
+  char path_line[PATH_MAX];
+  char entryid_line[64];
+
   /* Create cmd */
   sprintf(cmd, GETENTRY_COMMAND, args->thread_id);
 
@@ -43,7 +49,19 @@ void * getentry_worker (void * x) {
   /* Read script output from the pipe line by line */
   linenr = 1;
   while (fgets(line, LINE_BUFSIZE, pipe) != NULL) {
-    printf("Script output line %d: %s", linenr, line);
+    if (strncmp(line, PATH_IDENTIFIER, path_identifier_len) == 0) {
+      strcpy(path_line, line + (int) path_identifier_len);
+      
+      // Remove newline
+      path_line[(int)strlen(path_line)-1] = '\0';	
+    } else if (strncmp(line, ENTRYID_IDENTIFIER, entryid_identifier_len) == 0) {
+      strcpy(entryid_line, line + (int) entryid_identifier_len);
+
+      // Remove newline
+      entryid_line[(int)strlen(entryid_line)-1] = '\0';
+
+      printf("%s -> %s\n", entryid_line, path_line);
+    }
     ++linenr;
   }
     
