@@ -11,9 +11,9 @@
 #include <mpi.h>
 
 #include "file_info_hash.h"
-#include "persistent_db.h"
+#include "../common/persistent_db.h"
 
-#include "common.h"
+#include "../common/common.h"
 #define MAX_TARGETS 10
 #define TARGET_BUFFER_SIZE (10*1024*1024)
 #define TARGET_SEND_THRESHOLD (1*1024*1024)

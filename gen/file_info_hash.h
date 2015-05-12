@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include "common.h"
+#include "../common/common.h"
 
 typedef struct FileInfoHash FileInfoHash;
 
