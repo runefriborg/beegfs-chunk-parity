@@ -18,7 +18,7 @@
 #define TARGET_BUFFER_SIZE (10*1024*1024)
 #define TARGET_SEND_THRESHOLD (1*1024*1024)
 
-extern int process_task(int my_st, const char *path, const FileInfo *fi);
+extern int process_task(int my_st, const char *path, const FileInfo *fi, const char *load_pat, const char *save_pat);
 
 static const int global_coordinator = 0;
 static int mpi_rank;
@@ -500,7 +500,7 @@ int main(int argc, char **argv)
         while (j < nitems)
         {
             size_t s_len = strlen(s);
-            process_task(my_st, s, worklist_info + j);
+            process_task(my_st, s, worklist_info + j, "", "         parity");
             pdb_set(pdb, s, s_len, worklist_info + j);
             s += s_len + 1;
             j += 1;

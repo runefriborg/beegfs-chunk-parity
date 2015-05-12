@@ -39,8 +39,26 @@ void send_sync_message_to(int recieving_rank, int msg_size, const uint8_t msg[st
 }
 
 static
-int open_fileid_readonly(const char *id)
+void path_with_subst(char *res, size_t len, const char *path, const char *pat)
 {
+    size_t i = 0;
+    for (; pat[i] != '\0'; i++)
+        res[i] = (pat[i] == ' '? path[i] : pat[i]);
+    for (; path[i] != '\0' && i < len; i++)
+        res[i] = path[i];
+    res[i] = '\0';
+}
+
+static
+int open_fileid_readonly(const char *id, const char *load_pat)
+{
+    if (strncmp("/store0", id, 7) != 0) {
+        fputs("ERROR: All input files must start with /store0!"
+                " Reading from /dev/zero.\n", stderr);
+        return open("/dev/zero", O_RDONLY);
+    }
+    char tmp[256];
+    path_with_subst(tmp, sizeof(tmp), id, load_pat);
     int fd = open(id, O_RDONLY);
     if (fd < 0)
         return -errno;
@@ -49,22 +67,15 @@ int open_fileid_readonly(const char *id)
 }
 
 static
-int open_fileid_new_parity(const char *id, ssize_t expected_size)
+int open_fileid_new_parity(const char *id, ssize_t expected_size, const char *save_pat)
 {
-    char tmp[256];
-    const char A[] = "/store01/chunks/";
-    const char B[] = "/store02/chunks/";
-    int Alen = sizeof(A)-1;
-    int Blen = sizeof(B)-1;
-    if (strncmp(A, id, Alen) != 0 && strncmp(B, id, Blen) != 0) {
-        fputs("ERROR: All input files must start with /store0_/chunks/!"
+    if (strncmp("/store0", id, 7) != 0) {
+        fputs("ERROR: All input files must start with /store0!"
                 " Writing to /dev/null.\n", stderr);
         return open("/dev/null", O_WRONLY);
     }
-    snprintf(tmp, sizeof(tmp),
-            "/store0%c/parity/%s",
-            id[strlen("/store0")],
-            id+Alen);
+    char tmp[256];
+    path_with_subst(tmp, sizeof(tmp), id, save_pat);
     mkdir_for_file(tmp);
     int fd = creat(tmp, S_IRUSR | S_IWUSR);
     if (fd < 0)
@@ -109,7 +120,7 @@ void xor_parity(uint8_t *restrict dst, size_t nbytes, const uint8_t *data, int n
  *      receives data from chunk sources, calculate and store parity
  */
 static
-void parity_generator(const char *path, const FileInfo *task)
+void parity_generator(const char *path, const FileInfo *task, const char *sp)
 {
 #define IRECV_ALL(ii, loc, size) do { \
     for (int ii = 0; ii < active_source_ranks; ii++) \
@@ -132,7 +143,7 @@ void parity_generator(const char *path, const FileInfo *task)
     uint64_t data_left = max_cs;
     size_t buffer_size = MIN(FILE_TRANSFER_BUFFER_SIZE, max_cs);
     int expected_messages = div_round_up(max_cs, FILE_TRANSFER_BUFFER_SIZE);
-    int P_fd = open_fileid_new_parity(path, max_cs + 8);
+    int P_fd = open_fileid_new_parity(path, max_cs + 8, sp);
     int P_local_write_error = (P_fd < 0);
 
     for (int msg_i = 0; msg_i < expected_messages; msg_i++)
@@ -173,14 +184,14 @@ void parity_generator(const char *path, const FileInfo *task)
 }
 
 static
-void chunk_sender(const char *path, const FileInfo *task)
+void chunk_sender(const char *path, const FileInfo *task, const char *lp)
 {
     int coordinator = P_rank(task);
     uint64_t data_in_fd = task->max_chunk_size;
     size_t buffer_size = MIN(FILE_TRANSFER_BUFFER_SIZE, task->max_chunk_size);
     uint8_t *data = calloc(1, FILE_TRANSFER_BUFFER_SIZE);
     int have_had_error = 0;
-    int fd = open_fileid_readonly(path);
+    int fd = open_fileid_readonly(path, lp);
     uint64_t fd_size = 0;
     if (fd < 0)
         have_had_error = 1;
@@ -205,15 +216,15 @@ void chunk_sender(const char *path, const FileInfo *task)
 }
 
 /* Returns non-zero if we are involved in the task */
-int process_task(int my_st, const char *path, const FileInfo *fi)
+int process_task(int my_st, const char *path, const FileInfo *fi, const char *load_pat, const char *save_pat)
 {
     if (GET_P(fi->locations) == NO_P)
         return 0;
 
     if (GET_P(fi->locations) == my_st)
-        parity_generator(path, fi);
+        parity_generator(path, fi, save_pat);
     else if (my_st >= 0 && TEST_BIT(fi->locations, my_st))
-        chunk_sender(path, fi);
+        chunk_sender(path, fi, load_pat);
     else
         return 0;
     return 1;
