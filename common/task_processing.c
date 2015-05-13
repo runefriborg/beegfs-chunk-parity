@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <string.h>
 
 #include <mpi.h>
 
@@ -58,8 +59,10 @@ int open_fileid_readonly(const char *id, const char *load_pat)
         return open("/dev/zero", O_RDONLY);
     }
     char tmp[256];
-    path_with_subst(tmp, sizeof(tmp), id, load_pat);
-    int fd = open(id, O_RDONLY);
+    path_with_subst(tmp, strlen(id), id, load_pat);
+    int fd = open(tmp, O_RDONLY);
+    if (fd <= 0)
+        printf("opened '%s' with error = '%s'\n", tmp, strerror(errno));
     if (fd < 0)
         return -errno;
     posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_WILLNEED);
@@ -75,7 +78,7 @@ int open_fileid_new_parity(const char *id, ssize_t expected_size, const char *sa
         return open("/dev/null", O_WRONLY);
     }
     char tmp[256];
-    path_with_subst(tmp, sizeof(tmp), id, save_pat);
+    path_with_subst(tmp, strlen(id), id, save_pat);
     mkdir_for_file(tmp);
     int fd = creat(tmp, S_IRUSR | S_IWUSR);
     if (fd < 0)
@@ -120,7 +123,7 @@ void xor_parity(uint8_t *restrict dst, size_t nbytes, const uint8_t *data, int n
  *      receives data from chunk sources, calculate and store parity
  */
 static
-void parity_generator(const char *path, const FileInfo *task, const char *sp)
+void parity_generator(const char *path, const FileInfo *task, TaskInfo ti, int my_st)
 {
 #define IRECV_ALL(ii, loc, size) do { \
     for (int ii = 0; ii < active_source_ranks; ii++) \
@@ -143,7 +146,7 @@ void parity_generator(const char *path, const FileInfo *task, const char *sp)
     uint64_t data_left = max_cs;
     size_t buffer_size = MIN(FILE_TRANSFER_BUFFER_SIZE, max_cs);
     int expected_messages = div_round_up(max_cs, FILE_TRANSFER_BUFFER_SIZE);
-    int P_fd = open_fileid_new_parity(path, max_cs + 8, sp);
+    int P_fd = open_fileid_new_parity(path, max_cs + active_source_ranks*8, ti.save_pat);
     int P_local_write_error = (P_fd < 0);
 
     for (int msg_i = 0; msg_i < expected_messages; msg_i++)
@@ -166,15 +169,31 @@ void parity_generator(const char *path, const FileInfo *task, const char *sp)
         data_b = tmp;
     }
 
-    /* We only need the full file size when rebuilding, so it can be stored in
-     * the parity file, rather than the databse. */
-    int64_t full_size = 0;
     uint64_t chunk_sizes[MAX_STORAGE_TARGETS];
-    IRECV_ALL(src, chunk_sizes + src, sizeof(uint64_t));
-    MPI_Waitall(active_source_ranks, source_messages, source_stat);
-    for (int i = 0; i < active_source_ranks; i++)
-        full_size += chunk_sizes[i];
-    P_local_write_error |= (write(P_fd, &full_size, sizeof(full_size)) <= 0);
+    if (ti.is_rebuilding)
+    {
+        /* receive total size from ti.actual_P_st and truncate if necessary? */
+        MPI_Status stat;
+        MPI_Recv(chunk_sizes,
+                active_source_ranks*sizeof(uint64_t),
+                MPI_BYTE,
+                st2rank[ti.actual_P_st],
+                0,
+                MPI_COMM_WORLD,
+                &stat);
+        uint64_t loc = task->locations & ~(1 << ti.actual_P_st) & L_MASK;
+        uint64_t my_mask = (1 << my_st) - 1; /* 1's up to my_st */
+        int my_index = active_ranks(loc & my_mask);
+        ftruncate(P_fd, chunk_sizes[my_index]);
+    }
+    else
+    {
+        /* We only need the full file size when rebuilding, so it can be stored in
+         * the parity file, rather than the databse. */
+        IRECV_ALL(src, chunk_sizes + src, sizeof(uint64_t));
+        MPI_Waitall(active_source_ranks, source_messages, source_stat);
+        P_local_write_error |= (write(P_fd, chunk_sizes, sizeof(uint64_t)*active_source_ranks) <= 0);
+    }
 
     free(P_block);
     free(data_a);
@@ -184,14 +203,15 @@ void parity_generator(const char *path, const FileInfo *task, const char *sp)
 }
 
 static
-void chunk_sender(const char *path, const FileInfo *task, const char *lp)
+void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, int my_st)
 {
     int coordinator = P_rank(task);
+    int ntargets = active_ranks(task->locations);
     uint64_t data_in_fd = task->max_chunk_size;
     size_t buffer_size = MIN(FILE_TRANSFER_BUFFER_SIZE, task->max_chunk_size);
     uint8_t *data = calloc(1, FILE_TRANSFER_BUFFER_SIZE);
     int have_had_error = 0;
-    int fd = open_fileid_readonly(path, lp);
+    int fd = open_fileid_readonly(path, ti.load_pat);
     uint64_t fd_size = 0;
     if (fd < 0)
         have_had_error = 1;
@@ -199,32 +219,45 @@ void chunk_sender(const char *path, const FileInfo *task, const char *lp)
         struct stat st;
         fstat(fd, &st);
         fd_size = st.st_size;
+        if (ti.is_rebuilding && ti.actual_P_st == my_st)
+            fd_size -= ntargets*sizeof(uint64_t);
     }
-    uint64_t read_from_fd = 0;
+    size_t read_from_fd = 0;
     while (read_from_fd < data_in_fd)
     {
+        size_t data_left = data_in_fd - read_from_fd;
         if (!have_had_error) {
-            ssize_t r = read(fd, data, buffer_size);
+            ssize_t r = read(fd, data, MIN(buffer_size, data_left));
             have_had_error |= (r <= 0);
+            if (have_had_error)
+                memset(data, 0, buffer_size);
+            if (r > 0 && (size_t)r < buffer_size)
+                memset(data + r, 0, (buffer_size - r));
         }
         read_from_fd += buffer_size;
         send_sync_message_to(coordinator, buffer_size, data);
     }
-    send_sync_message_to(coordinator, sizeof(fd_size), (uint8_t *)&fd_size);
+    if (ti.is_rebuilding && ti.actual_P_st == my_st) {
+        uint64_t chunk_sizes[MAX_STORAGE_TARGETS];
+        read(fd, chunk_sizes, ntargets*sizeof(uint64_t));
+        send_sync_message_to(coordinator, ntargets*sizeof(uint64_t), (uint8_t*)chunk_sizes);
+    }
+    else if (!ti.is_rebuilding)
+        send_sync_message_to(coordinator, sizeof(fd_size), (uint8_t *)&fd_size);
     free(data);
     close(fd);
 }
 
 /* Returns non-zero if we are involved in the task */
-int process_task(int my_st, const char *path, const FileInfo *fi, const char *load_pat, const char *save_pat)
+int process_task(int my_st, const char *path, const FileInfo *fi, TaskInfo ti)
 {
     if (GET_P(fi->locations) == NO_P)
         return 0;
 
     if (GET_P(fi->locations) == my_st)
-        parity_generator(path, fi, save_pat);
+        parity_generator(path, fi, ti, my_st);
     else if (my_st >= 0 && TEST_BIT(fi->locations, my_st))
-        chunk_sender(path, fi, load_pat);
+        chunk_sender(path, fi, ti, my_st);
     else
         return 0;
     return 1;

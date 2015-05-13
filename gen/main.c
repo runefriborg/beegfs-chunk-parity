@@ -14,11 +14,9 @@
 #include "../common/persistent_db.h"
 
 #include "../common/common.h"
-#define MAX_TARGETS 10
+#define MAX_TARGETS MAX_STORAGE_TARGETS
 #define TARGET_BUFFER_SIZE (10*1024*1024)
 #define TARGET_SEND_THRESHOLD (1*1024*1024)
-
-extern int process_task(int my_st, const char *path, const FileInfo *fi, const char *load_pat, const char *save_pat);
 
 static const int global_coordinator = 0;
 static int mpi_rank;
@@ -26,12 +24,6 @@ static int mpi_world_size;
 
 int st2rank[MAX_STORAGE_TARGETS];
 int rank2st[MAX_STORAGE_TARGETS*2+1];
-
-typedef struct { int id, rank; } Target;
-typedef struct {
-    int ntargets;
-    Target targetIDs[MAX_TARGETS];
-} RunData;
 
 static
 void send_sync_message_to(int recieving_rank, int msg_size, const uint8_t msg[static msg_size])
@@ -495,12 +487,13 @@ int main(int argc, char **argv)
         MPI_Bcast(&path_bytes, sizeof(path_bytes), MPI_BYTE, i, comm);
         MPI_Bcast(worklist_keys, path_bytes, MPI_BYTE, i, comm);
 
+        TaskInfo ti = { "", "         parity", 0, -1 };
         size_t j = 0;
         const char *s = worklist_keys;
         while (j < nitems)
         {
             size_t s_len = strlen(s);
-            process_task(my_st, s, worklist_info + j, "", "         parity");
+            process_task(my_st, s, worklist_info + j, ti);
             pdb_set(pdb, s, s_len, worklist_info + j);
             s += s_len + 1;
             j += 1;

@@ -17,6 +17,21 @@ typedef struct {
     uint64_t locations;
 } FileInfo;
 
+typedef struct {
+    const char *load_pat;
+    const char *save_pat;
+    int is_rebuilding;
+    int actual_P_st; /* <- Only valid when rebuilding */
+} TaskInfo;
+
+typedef struct { int id, rank; } Target;
+typedef struct {
+    int ntargets;
+    Target targetIDs[MAX_STORAGE_TARGETS];
+} RunData;
+
+int process_task(int my_st, const char *path, const FileInfo *fi, TaskInfo ti);
+
 #define MAX(a,b) ((a) > (b)? (a) : (b))
 #define MIN(a,b) ((a) < (b)? (a) : (b))
 
