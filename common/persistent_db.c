@@ -83,3 +83,23 @@ int pdb_get(const PersistentDB *pdb, const char *key, size_t keylen, FileInfo *v
     return 1;
 }
 
+void pdb_iterate(const PersistentDB *pdb, ProcessFileInfos f)
+{
+    int is_done = 0;
+    char tmp_key[200];
+    leveldb_iterator_t *iter = leveldb_create_iterator(pdb->db, pdb->ropts);
+    leveldb_iter_seek_to_first(iter);
+    while (!is_done && leveldb_iter_valid(iter)) {
+        size_t keylen;
+        const char *key = leveldb_iter_key(iter, &keylen);
+        memcpy(tmp_key, key, keylen);
+        tmp_key[keylen] = '\0';
+        size_t vallen;
+        const char *val = leveldb_iter_value(iter, &vallen);
+        if (vallen == sizeof(FileInfo))
+            is_done = f(tmp_key, keylen, (const FileInfo*)val);
+        leveldb_iter_next(iter);
+    }
+    leveldb_iter_destroy(iter);
+}
+
