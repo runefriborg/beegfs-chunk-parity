@@ -1,5 +1,6 @@
 #!/bin/sh
 
+
 PID=$$
 
 # Args
@@ -49,11 +50,11 @@ cd ${CACHEDIR}
 # Create file lists
 ${BINDIR}/filelist-runner ${#BEEGFSMOUNT} "${DIR}"
 
-# Get entry
-#cat output.0 | fhgfs-ctl --getentryinfo --nomappings --verbose - 
+# Get entries and create db
+LD_LIBRARY_PATH=/project/SystemWork/leveldb ${BINDIR}/getentry-runner ${LEVELDB}
 
 # Cleanup
-#rm -f ${CACHEDIR}/output.*
+rm -f ${CACHEDIR}/output.*
 
 # Change to PWD
 cd ${PWD}

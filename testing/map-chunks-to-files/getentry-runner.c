@@ -8,6 +8,8 @@
 /* limits.h defines "PATH_MAX". */
 #include <limits.h>
 
+#include "mutexleveldb.h"
+
 #define GETENTRY_THREADS 4
 #define GETENTRY_COMMAND   "cat output.%d | fhgfs-ctl --getentryinfo --nomappings --unmounted -"
 #define PATH_IDENTIFIER    "Path: "
@@ -15,7 +17,7 @@
 #define LINE_BUFSIZE PATH_MAX
 
 // Global values shared between threads
-pthread_mutex_t _mutex;
+struct mutexleveldb * db;
 
 struct arg_struct {
   int thread_id;
@@ -60,7 +62,8 @@ void * getentry_worker (void * x) {
       // Remove newline
       entryid_line[(int)strlen(entryid_line)-1] = '\0';
 
-      printf("%s -> %s\n", entryid_line, path_line);
+      // Write to db
+      mutexleveldb_write(db, entryid_line, strlen(entryid_line), path_line, strlen(path_line));
     }
     ++linenr;
   }
@@ -77,9 +80,16 @@ int main(int argc, char *argv[]) {
   pthread_attr_t attr;
   struct arg_struct thread_args[GETENTRY_THREADS];
   int i;
+
+  /* Get args */
+  if(argc == 2) {
+    /* Init db */
+    db = mutexleveldb_create(argv[1]);
+  } else {
+    printf("Usage: getentry-runner <leveldb filename>\n");
+    exit(1);
+  }
  
-  /* Init mutex */
-  pthread_mutex_init(&_mutex, NULL);
 
   /* For portability, explicitly create threads in a joinable state */
   pthread_attr_init(&attr);
@@ -96,7 +106,7 @@ int main(int argc, char *argv[]) {
 
   /* Clean up and exit */
   pthread_attr_destroy(&attr);
-  pthread_mutex_destroy(&_mutex);
+  mutexleveldb_close_and_destroy(db);
   pthread_exit(NULL);
 
   return 0;
