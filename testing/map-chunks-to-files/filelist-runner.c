@@ -10,7 +10,7 @@
 /* limits.h defines "PATH_MAX". */
 #include <limits.h>
 
-#define READDIR_THREADS 4
+#define READDIR_THREADS 8
 #define QUEUE_SIZE 10000000
 
 #include "mutexqueue.h"
@@ -28,7 +28,6 @@ void * dir_worker (void * fileoutput) {
   FILE * fp = fileoutput;
   struct dirent dirent_data; 
  
-
   while (1) {
 
     /* Blocking dequeue */
@@ -49,6 +48,7 @@ void * dir_worker (void * fileoutput) {
         exit (EXIT_FAILURE);
     }
 
+    /* Loops until no more entries in dir */
     while (1) {
         struct dirent * entry;
         const char * d_name;

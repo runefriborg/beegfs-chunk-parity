@@ -1,8 +1,8 @@
 LEVELDB=/project/SystemWork/leveldb
 
-CPPFLAGS?=-I/${LEVELDB}/include -Wall -Wextra -pedantic -std=gnu99 -g -Os
-LDFLAGS?=-L/${LEVELDB}
-SOURCES=filelist-runner.c getentry-runner.c
+CPPFLAGS?=-I${LEVELDB}/include -Wall -Wextra -pedantic -std=gnu99 -g -Os
+LDFLAGS?=-L${LEVELDB}
+SOURCES=perf.c filelist-runner.c getentry-runner.c
 OBJECTS=$(SOURCES:.c=.o)
 PROGRAMS=filelist-runner getentry-runner
 
@@ -18,5 +18,5 @@ clean:
 filelist-runner: filelist-runner.o
 	$(CC) $(LDFLAGS) -lpthread $^ -o $@
 
-getentry-runner: getentry-runner.o
+getentry-runner: perf.o getentry-runner.o
 	$(CC) $(LDFLAGS) -lleveldb -lpthread $^ -o $@
