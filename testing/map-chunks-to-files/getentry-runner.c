@@ -86,7 +86,7 @@ void * getentry_worker (void * x) {
       #endif
 
       // Write to db
-      mutexleveldb_write2(1000, db, entryid_line, strlen(entryid_line), path_line, strlen(path_line));
+      mutexleveldb_write2(10000, db, entryid_line, strlen(entryid_line), path_line, strlen(path_line));
 
       #ifdef PROFILE
         perf_update_tick(perf_leveldb);

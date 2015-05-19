@@ -50,6 +50,9 @@ cd ${CACHEDIR}
 # Create file lists
 ${BINDIR}/filelist-runner ${#BEEGFSMOUNT} "${DIR}"
 
+# Show output files
+ls -la output.*
+
 # Get entries and create db
 LD_LIBRARY_PATH=/project/SystemWork/leveldb ${BINDIR}/getentry-runner ${LEVELDB}
 

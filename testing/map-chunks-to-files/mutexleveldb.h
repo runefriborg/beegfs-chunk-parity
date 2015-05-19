@@ -71,7 +71,7 @@ int mutexleveldb_write2(int progress, struct mutexleveldb * mdb, char * key, siz
   if (progress != 0 && (mdb->count % progress) == 0) {
     gettimeofday(&tv, NULL); 
     t = tv.tv_sec + tv.tv_usec / 1000000.0;
-    fprintf(stderr, "%-10ld %f\n", mdb->count, t - mdb->time);
+    fprintf(stderr, "%12ld files processed at %7.0f files/s\n", mdb->count, ((double) progress) / (t - mdb->time));
     mdb->time = t;
   }
 
