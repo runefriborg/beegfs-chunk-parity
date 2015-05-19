@@ -162,16 +162,9 @@ int main(int argc, char *argv[]) {
     perf_global_free();
   #endif
 
-
-  fprintf(stderr, "\n1\n");
   /* Clean up and exit */
   pthread_attr_destroy(&attr);
-  fprintf(stderr, "\n2\n");
   mutexleveldb_close_and_destroy(db);
-  fprintf(stderr, "\n3\n");
-  pthread_exit(NULL);
-  fprintf(stderr, "\n4\n");
 
   return 0;
 }
-
