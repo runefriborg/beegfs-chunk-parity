@@ -11,8 +11,8 @@
 #include "mutexleveldb.h"
 #include "perf.h"
 
-#define PROFILE 0
-#define GETENTRY_THREADS 8
+#undef PROFILE
+#define GETENTRY_THREADS 32
 #define GETENTRY_COMMAND   "cat output.%d | fhgfs-ctl --getentryinfo --nomappings --unmounted -"
 #define PATH_IDENTIFIER    "Path: "
 #define ENTRYID_IDENTIFIER "EntryID: "
@@ -86,7 +86,7 @@ void * getentry_worker (void * x) {
       #endif
 
       // Write to db
-      mutexleveldb_write(db, entryid_line, strlen(entryid_line), path_line, strlen(path_line));
+      mutexleveldb_write2(1000, db, entryid_line, strlen(entryid_line), path_line, strlen(path_line));
 
       #ifdef PROFILE
         perf_update_tick(perf_leveldb);
@@ -98,9 +98,6 @@ void * getentry_worker (void * x) {
     #endif
     ++linenr;
     
-    if ((linenr % (12*10000)) == 0) {
-      fprintf(stderr, ".");
-    }
   }
     
   /* Once here, out of the loop, the script has ended. */
@@ -165,10 +162,15 @@ int main(int argc, char *argv[]) {
     perf_global_free();
   #endif
 
+
+  fprintf(stderr, "\n1\n");
   /* Clean up and exit */
   pthread_attr_destroy(&attr);
+  fprintf(stderr, "\n2\n");
   mutexleveldb_close_and_destroy(db);
+  fprintf(stderr, "\n3\n");
   pthread_exit(NULL);
+  fprintf(stderr, "\n4\n");
 
   return 0;
 }

@@ -2,6 +2,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/time.h>
 
 
 struct mutexleveldb {
@@ -11,10 +12,13 @@ struct mutexleveldb {
   leveldb_readoptions_t *roptions;
   leveldb_writeoptions_t *woptions;
   char *err;
+  double time;
+  long count;
 };
 
 struct mutexleveldb *mutexleveldb_create(char * filename) {
   struct mutexleveldb *mdb=malloc(sizeof(struct mutexleveldb));
+  struct timeval tv;
   mdb->err = NULL;
 
   /******************************************/
@@ -32,13 +36,22 @@ struct mutexleveldb *mutexleveldb_create(char * filename) {
   /* reset error var */
   leveldb_free(mdb->err); mdb->err = NULL;
 
+  /* Init count and time */
+  mdb->count = 0;
+  gettimeofday(&tv, NULL); 
+  mdb->time = tv.tv_sec + tv.tv_usec / 1000000.0;
+
   /* Init mutex */
   pthread_mutex_init(&mdb->mutex, NULL);
   
   return mdb;
 }
 
-int mutexleveldb_write(struct mutexleveldb * mdb, char * key, size_t keylen, char * val, size_t vallen) {
+
+int mutexleveldb_write2(int progress, struct mutexleveldb * mdb, char * key, size_t keylen, char * val, size_t vallen) {
+  struct timeval tv;
+  double t;
+
   /******************************************/
   /* WRITE */  
   pthread_mutex_lock(&mdb->mutex);
@@ -54,8 +67,20 @@ int mutexleveldb_write(struct mutexleveldb * mdb, char * key, size_t keylen, cha
 
   leveldb_free(mdb->err); mdb->err = NULL;
 
+  mdb->count++;
+  if (progress != 0 && (mdb->count % progress) == 0) {
+    gettimeofday(&tv, NULL); 
+    t = tv.tv_sec + tv.tv_usec / 1000000.0;
+    fprintf(stderr, "%-10ld %f\n", mdb->count, t - mdb->time);
+    mdb->time = t;
+  }
+
   pthread_mutex_unlock(&mdb->mutex);
   return 0;
+}
+
+inline int mutexleveldb_write(struct mutexleveldb * mdb, char * key, size_t keylen, char * val, size_t vallen) {
+  return mutexleveldb_write2(0, mdb, key, keylen, val, vallen);
 }
 
 int mutexleveldb_close_and_destroy(struct mutexleveldb * mdb) {

@@ -10,7 +10,7 @@
 /* limits.h defines "PATH_MAX". */
 #include <limits.h>
 
-#define READDIR_THREADS 8
+#define READDIR_THREADS 32
 #define QUEUE_SIZE 10000000
 
 #include "mutexqueue.h"
