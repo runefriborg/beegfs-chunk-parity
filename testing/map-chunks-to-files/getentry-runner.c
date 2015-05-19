@@ -11,6 +11,7 @@
 #include "mutexleveldb.h"
 #include "perf.h"
 
+#define PROFILE 0
 #define GETENTRY_THREADS 8
 #define GETENTRY_COMMAND   "cat output.%d | fhgfs-ctl --getentryinfo --nomappings --unmounted -"
 #define PATH_IDENTIFIER    "Path: "
@@ -29,11 +30,14 @@ struct arg_struct {
 void * getentry_worker (void * x) {
 
   char line[LINE_BUFSIZE];
-  int linenr;
+  long linenr;
   FILE *pipe;
   char cmd[PATH_MAX];
   struct arg_struct *args = (struct arg_struct *) x;
-  perf_entry_t * perf_getentry, * perf_leveldb, * perf_strcmp;
+
+  #ifdef PROFILE
+    perf_entry_t * perf_getentry, * perf_leveldb, * perf_strcmp;
+  #endif
 
   size_t path_identifier_len = strlen(PATH_IDENTIFIER);
   size_t entryid_identifier_len = strlen(ENTRYID_IDENTIFIER);
@@ -41,11 +45,13 @@ void * getentry_worker (void * x) {
   char path_line[PATH_MAX];
   char entryid_line[64];
 
-  perf_getentry = perf_create("thread", args->thread_id*3+1, 0);
-  perf_leveldb  = perf_create("leveldb", args->thread_id*3+2, args->thread_id*3+1);
-  perf_strcmp   = perf_create("strcmp", args->thread_id*3+3, args->thread_id*3+1);
+  #ifdef PROFILE
+    perf_getentry = perf_create("thread", args->thread_id*3+1, 0);
+    perf_leveldb  = perf_create("leveldb", args->thread_id*3+2, args->thread_id*3+1);
+    perf_strcmp   = perf_create("strcmp", args->thread_id*3+3, args->thread_id*3+1);
   
-  perf_update_start(perf_getentry);
+    perf_update_start(perf_getentry);
+  #endif
 
   /* Create cmd */
   sprintf(cmd, GETENTRY_COMMAND, args->thread_id);
@@ -60,7 +66,9 @@ void * getentry_worker (void * x) {
   /* Read script output from the pipe line by line */
   linenr = 1;
   while (fgets(line, LINE_BUFSIZE, pipe) != NULL) {
-    perf_update_start(perf_strcmp);  
+    #ifdef PROFILE
+      perf_update_start(perf_strcmp);  
+    #endif
     if (strncmp(line, PATH_IDENTIFIER, path_identifier_len) == 0) {
       strcpy(path_line, line + (int) path_identifier_len);
       
@@ -72,29 +80,42 @@ void * getentry_worker (void * x) {
       // Remove newline
       entryid_line[(int)strlen(entryid_line)-1] = '\0';
 
-      perf_update_tick(perf_strcmp);  
+      #ifdef PROFILE
+        perf_update_tick(perf_strcmp);  
+        perf_update_start(perf_leveldb);
+      #endif
 
       // Write to db
-      perf_update_start(perf_leveldb);
       mutexleveldb_write(db, entryid_line, strlen(entryid_line), path_line, strlen(path_line));
-      perf_update_tick(perf_leveldb);
 
-      perf_update_start(perf_strcmp);  
+      #ifdef PROFILE
+        perf_update_tick(perf_leveldb);
+        perf_update_start(perf_strcmp);  
+      #endif
     }
-    perf_update_tick(perf_strcmp);
+    #ifdef PROFILE
+      perf_update_tick(perf_strcmp);
+    #endif
     ++linenr;
+    
+    if ((linenr % (12*10000)) == 0) {
+      fprintf(stderr, ".");
+    }
   }
     
   /* Once here, out of the loop, the script has ended. */
   pclose(pipe); /* Close the pipe */
 
-  perf_update_tick(perf_getentry);
+  #ifdef PROFILE
+    perf_update_tick(perf_getentry);
 
-  perf_submit(perf_getentry);
-  perf_submit(perf_leveldb);
-  perf_submit(perf_strcmp);
-  
+    perf_submit(perf_getentry);
+    perf_submit(perf_leveldb);
+    perf_submit(perf_strcmp);
+  #endif
+
   pthread_exit(NULL);
+  
 }
 
 
@@ -103,7 +124,9 @@ int main(int argc, char *argv[]) {
   pthread_attr_t attr;
   struct arg_struct thread_args[GETENTRY_THREADS];
   int i;
-  perf_entry_t * perf_main;
+  #ifdef PROFILE
+    perf_entry_t * perf_main;
+  #endif
 
   /* Get args */
   if(argc == 2) {
@@ -114,9 +137,11 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
  
-  perf_global_init();
-  perf_main = perf_create("Main", 0, -1);
-  perf_update_start(perf_main);
+  #ifdef PROFILE
+    perf_global_init();
+    perf_main = perf_create("Main", 0, -1);
+    perf_update_start(perf_main);
+  #endif
 
   /* For portability, explicitly create threads in a joinable state */
   pthread_attr_init(&attr);
@@ -133,10 +158,12 @@ int main(int argc, char *argv[]) {
     pthread_join(threads[i], NULL);
   }
 
-  perf_update_tick(perf_main);
-  perf_submit(perf_main);
-  perf_output_report(0);
-  perf_global_free();
+  #ifdef PROFILE
+    perf_update_tick(perf_main);
+    perf_submit(perf_main);
+    perf_output_report(0);
+    perf_global_free();
+  #endif
 
   /* Clean up and exit */
   pthread_attr_destroy(&attr);
