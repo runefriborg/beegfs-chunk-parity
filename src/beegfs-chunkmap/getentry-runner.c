@@ -121,16 +121,17 @@ int main(int argc, char *argv[]) {
   pthread_attr_t attr;
   struct arg_struct thread_args[GETENTRY_THREADS];
   int i;
+
   #ifdef PROFILE
     perf_entry_t * perf_main;
   #endif
 
   /* Get args */
-  if(argc == 2) {
+  if(argc == 3) {
     /* Init db */
-    db = mutexleveldb_create(argv[1]);
+    db = mutexleveldb_create2(atol(argv[1]), argv[2]);
   } else {
-    printf("Usage: getentry-runner <leveldb filename>\n");
+    printf("Usage: getentry-runner <filecount> <leveldb filename>\n");
     exit(1);
   }
  

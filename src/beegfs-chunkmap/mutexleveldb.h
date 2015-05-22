@@ -14,9 +14,11 @@ struct mutexleveldb {
   char *err;
   double time;
   long count;
+  long prev_count;
+  long expected;
 };
 
-struct mutexleveldb *mutexleveldb_create(char * filename) {
+struct mutexleveldb *mutexleveldb_create2(long expected_write_count, char * filename) {
   struct mutexleveldb *mdb=malloc(sizeof(struct mutexleveldb));
   struct timeval tv;
   mdb->err = NULL;
@@ -38,6 +40,8 @@ struct mutexleveldb *mutexleveldb_create(char * filename) {
 
   /* Init count and time */
   mdb->count = 0;
+  mdb->prev_count = 0;
+  mdb->expected = expected_write_count;
   gettimeofday(&tv, NULL); 
   mdb->time = tv.tv_sec + tv.tv_usec / 1000000.0;
 
@@ -47,6 +51,9 @@ struct mutexleveldb *mutexleveldb_create(char * filename) {
   return mdb;
 }
 
+struct mutexleveldb *mutexleveldb_create(char * filename) {
+  return mutexleveldb_create2(0, filename);
+}
 
 int mutexleveldb_write2(int progress, struct mutexleveldb * mdb, char * key, size_t keylen, char * val, size_t vallen) {
   struct timeval tv;
@@ -68,11 +75,12 @@ int mutexleveldb_write2(int progress, struct mutexleveldb * mdb, char * key, siz
   leveldb_free(mdb->err); mdb->err = NULL;
 
   mdb->count++;
-  if (progress != 0 && (mdb->count % progress) == 0) {
+  if (mdb->expected != 0 && progress != 0 && (mdb->count % progress) == 0) {
     gettimeofday(&tv, NULL); 
     t = tv.tv_sec + tv.tv_usec / 1000000.0;
-    fprintf(stderr, "%12ld files processed at %7.0f files/s\n", mdb->count, ((double) progress) / (t - mdb->time));
+    printf("%12ld (%3.0f%%) files processed at %7.0f files/s\n", mdb->count, ((float) mdb->count / (float) mdb->expected) * 100, ((double) progress) / (t - mdb->time));
     mdb->time = t;
+    mdb->prev_count = mdb->count;
   }
 
   pthread_mutex_unlock(&mdb->mutex);
@@ -84,11 +92,19 @@ inline int mutexleveldb_write(struct mutexleveldb * mdb, char * key, size_t keyl
 }
 
 int mutexleveldb_close_and_destroy(struct mutexleveldb * mdb) {
+  struct timeval tv;
+  double t;
 
   /******************************************/
   /* CLOSE */
   leveldb_close(mdb->db);
   leveldb_free(mdb->err); mdb->err = NULL;
+
+  if (mdb->expected != 0) {
+    gettimeofday(&tv, NULL);
+    t = tv.tv_sec + tv.tv_usec / 1000000.0;
+    printf("%12ld (%3.0f%%) files processed at %7.0f files/s\n", mdb->count, ((float) mdb->count / (float) mdb->expected) * 100, ((double) (mdb->count - mdb->prev_count)) / (t - mdb->time));
+  }
 
   pthread_mutex_destroy(&mdb->mutex);
   free(mdb);

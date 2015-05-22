@@ -4,7 +4,7 @@ CPPFLAGS?=-I${LEVELDB}/include -Wall -Wextra -pedantic -std=gnu99 -g -Os
 LDFLAGS?=-L${LEVELDB}
 SOURCES=perf.c filelist-runner.c getentry-runner.c
 OBJECTS=$(SOURCES:.c=.o)
-PROGRAMS=filelist-runner getentry-runner
+PROGRAMS=filelist-runner getentry-runner 
 
 all: $(PROGRAMS)
 
@@ -20,3 +20,4 @@ filelist-runner: filelist-runner.o
 
 getentry-runner: perf.o getentry-runner.o
 	$(CC) $(LDFLAGS) -lleveldb -lpthread $^ -o $@
+

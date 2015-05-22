@@ -27,6 +27,9 @@ void * dir_worker (void * fileoutput) {
   char * dir_name;
   FILE * fp = fileoutput;
   struct dirent dirent_data; 
+  long count;
+
+  count = 0;
  
   while (1) {
 
@@ -74,6 +77,12 @@ void * dir_worker (void * fileoutput) {
 	    fprintf (fp, "%s/%s\n", dir_name + SKIPCHARS, d_name);
           } else {
 	    fprintf (fp, "/%s\n", d_name);
+          }
+
+          count++;
+          if ((count % 100000) == 0) {
+            fprintf(stdout, ".");
+            fflush(stdout);
           }
 	}
 
@@ -133,6 +142,9 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
+  fprintf(stdout, ".");
+  fflush(stdout);
+
   /* Allocate mutexqueue and enqueue root element */
   dir_queue= mutexqueue_create(READDIR_THREADS, QUEUE_SIZE);
   enqueue(dir_queue, dir);
@@ -159,6 +171,8 @@ int main(int argc, char *argv[]) {
   for (i = 0; i<READDIR_THREADS; i++) {
     fclose(fp[i]);
   }
+
+  printf("\n");
 
   /* Clean up and exit */
   pthread_attr_destroy(&attr);
