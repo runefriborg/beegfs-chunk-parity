@@ -27,7 +27,7 @@ stop signal.
 # Handle if we cannot read the directory, and make sure we only try to rewrite
 # files we have permission to rewrite.
 #
-# Make completely sure temporary files get a distinct name
+# Figure out where we should look up our client side file
 
 
 ###############################################################################
