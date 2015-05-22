@@ -62,7 +62,7 @@ def check_folder(path):
 def rewrite_worker(worker, idx, path, cachedir):
     global cumsum
 
-    invocation = './Projects/rechunk.py {} -w -f {} -c {}'.format(path, worker.listname, cachedir)
+    invocation = './Projects/beegfs-chunk-parity/testing/rechunk/rechunk.py {} -w -f {} -c {} --id {}'.format(path, worker.listname, cachedir, idx)
     cmd = ['ssh', worker.hostname, invocation]
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 
@@ -268,7 +268,7 @@ def sigpipe_handler(signal, frame):
     #fh.write("Killed by {}".format(signal))
     #fh.close()
 
-def worker_func(path, filelist, cachedir):
+def worker_func(path, filelist, cachedir, idx):
     if not os.path.isabs(filelist):
         print "Error: Path to filelist must be absolute."
 
@@ -298,8 +298,11 @@ def worker_func(path, filelist, cachedir):
             curfile =  i
             curidx  += 1
 
+
             # The name of the temporary file.
-            tempname = "{}/.rechunk.{}".format(cachedir, os.path.basename(i))
+            #tempname = "{}/.rechunk.{}".format(cachedir, os.path.basename(i))
+            tempname = cachedir + "/.rechunk." + str(idx) + "." + os.path.basename(i)
+            tempname = os.path.normpath(tempname)
 
             p = subprocess.Popen(['cp', '-p', '-f', i, tempname])
 
@@ -385,13 +388,14 @@ if __name__ == '__main__':
     # For worker mode
     parser.add_argument('-f', '--filelist', type=str, help='file containing filenames to be rewritten')
     parser.add_argument('-w', '--worker', action='store_true', help='worker mode (do not call manually)')
+    parser.add_argument('--id', type=int, help='ID to make sure we have unique filenames')
 
 
     d = parser.parse_args()
 
     if d.worker:
         if d.filelist != None:
-            worker_func(d.path, d.filelist, d.cachedir)
+            worker_func(d.path, d.filelist, d.cachedir, d.id)
         else:
             print "Missing filelist"
     else:
