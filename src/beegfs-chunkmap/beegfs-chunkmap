@@ -43,20 +43,44 @@ fi
 
 PWD=`pwd`
 
+# Get path for LEVELDB
+if [ ! "${LEVELDB:0:1}" == "/" ]; then
+        LEVELDB="${PWD}/${LEVELDB}"
+fi
+
+echo "##### ${DIR} #####"
+
 # Change to CACHEDIR
 cd ${CACHEDIR}
+
+echo "Creating file lists ${CACHEDIR}/output.*"
 
 # Create file lists
 ${BINDIR}/filelist-runner ${#BEEGFSMOUNT} "${DIR}"
 
-# Show output files
-ls -la output.*
+if [ ! "$?" -eq 0 ]; then
+        echo "Aborted! Check system consistency!"
+        exit 1
+fi
+
+# Count number of file entries
+FILES=$(cat output.* | wc -l)
+
+echo "Total count: ${FILES}"
+
+echo "Write entries to LevelDB: ${LEVELDB}"
 
 # Get entries and create db
-LD_LIBRARY_PATH=/project/SystemWork/leveldb ${BINDIR}/getentry-runner ${LEVELDB}
+LD_LIBRARY_PATH=/project/SystemWork/leveldb ${BINDIR}/getentry-runner ${FILES} ${LEVELDB}
+
+if [ ! "$?" -eq 0 ]; then
+        echo "Aborted! Check system consistency!"
+        exit 1
+fi
+
+# Change to PWD
+cd ${PWD}
 
 # Cleanup
 rm -f ${CACHEDIR}/output.*
 
-# Change to PWD
-cd ${PWD}
