@@ -7,9 +7,9 @@ PID=$$
 DIR=""
 LEVELDB=""
 CACHEDIR="."
+BINDIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 
 # Settings
-THREADS=4
 BEEGFSMOUNT="/faststorage"
 
 failed_params=0
@@ -42,7 +42,6 @@ EOF
 fi
 
 PWD=`pwd`
-BINDIR=${PWD}
 
 # Change to CACHEDIR
 cd ${CACHEDIR}
