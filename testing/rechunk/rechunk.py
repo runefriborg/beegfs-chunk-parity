@@ -301,7 +301,7 @@ def worker_func(path, filelist, cachedir):
             # The name of the temporary file.
             tempname = "{}/.rechunk.{}".format(cachedir, os.path.basename(i))
 
-            p = subprocess.Popen(['cp', '-f', i, tempname])
+            p = subprocess.Popen(['cp', '-p', '-f', i, tempname])
 
 
             # Loop while checking if copying is done or we have been
