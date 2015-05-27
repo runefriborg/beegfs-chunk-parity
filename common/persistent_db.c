@@ -34,7 +34,9 @@ PersistentDB* pdb_init()
     PersistentDB *res = calloc(1, sizeof(PersistentDB));
     if (errmsg != NULL) {
         fprintf(stderr, "%s\n", errmsg);
+        return NULL;
     }
+    leveldb_free(errmsg);
     res->options = db_options;
     res->cache = cache;
     res->wopts = write_options;
@@ -63,18 +65,20 @@ void pdb_set(PersistentDB *pdb, const char *key, size_t keylen, const FileInfo *
             key, keylen,
             (const char *)val, sizeof(FileInfo),
             &errmsg);
+    leveldb_free(errmsg);
 }
 
 int pdb_get(const PersistentDB *pdb, const char *key, size_t keylen, FileInfo *val)
 {
     size_t fi_len;
-    char *errmsg;
+    char *errmsg = NULL;
     FileInfo *pfi = (FileInfo *)leveldb_get(
             pdb->db,
             pdb->ropts,
             key, keylen,
             &fi_len,
             &errmsg);
+    leveldb_free(errmsg);
     if (pfi == NULL)
         return 0;
     assert(fi_len == sizeof(FileInfo));
