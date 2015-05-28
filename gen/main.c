@@ -7,6 +7,7 @@
 
 #include <unistd.h>
 #include <fcntl.h>
+#include <time.h>
 
 #include <mpi.h>
 
@@ -17,6 +18,16 @@
 #define MAX_TARGETS MAX_STORAGE_TARGETS
 #define TARGET_BUFFER_SIZE (10*1024*1024)
 #define TARGET_SEND_THRESHOLD (1*1024*1024)
+
+#define PROF_START(name) \
+    struct timespec t_##name##_0; \
+    clock_gettime(CLOCK_MONOTONIC, &t_##name##_0)
+#define PROF_END(name) \
+    struct timespec t_##name##_1; \
+    clock_gettime(CLOCK_MONOTONIC, &t_##name##_1)
+#define PROF_VAL(name) \
+    ((t_##name##_1.tv_sec - t_##name##_0.tv_sec) * 1.0 \
+    + (t_##name##_1.tv_nsec - t_##name##_0.tv_nsec) * 1e-9)
 
 static const int global_coordinator = 0;
 static int mpi_rank;
@@ -254,6 +265,8 @@ int main(int argc, char **argv)
     const char *timestamp_b = argv[4];
     const char *data_file = argv[5];
 
+    PROF_START(total);
+
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &mpi_world_size);
@@ -263,6 +276,8 @@ int main(int argc, char **argv)
     if (ntargets > MAX_TARGETS) {
         return 1;
     }
+
+    PROF_START(init);
 
     int last_run_fd = -1;
     RunData last_run;
@@ -327,6 +342,8 @@ int main(int argc, char **argv)
         close(last_run_fd);
     }
 
+    PROF_END(init);
+
     int eater_ranks[MAX_TARGETS];
     int feeder_ranks[MAX_TARGETS];
     for (int i = 0; i < ntargets; i++) {
@@ -349,6 +366,8 @@ int main(int argc, char **argv)
     MPI_Group_excl(everyone, ntargets, feeder_ranks, &not_everyone);
     MPI_Comm comm;
     MPI_Comm_create(MPI_COMM_WORLD, not_everyone, &comm);
+
+    PROF_START(phase1);
 
     /*
      * In phase 1 we have 3 kinds of processes:
@@ -378,7 +397,8 @@ int main(int argc, char **argv)
             MPI_Recv(&error, sizeof(error), MPI_BYTE, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &stat);
             still_in_stage_1 -= 1;
             failed += error;
-            printf("gco: got message from %d, with error = %d\n", stat.MPI_SOURCE, error);
+            if (error != 0)
+                printf("gco: got message from %d, with error = %d\n", stat.MPI_SOURCE, error);
         }
         /* Inform all eaters that there is no more food */
         uint8_t dummy = 1;
@@ -430,7 +450,6 @@ int main(int argc, char **argv)
                         pfi->timestamp))
                     name_bytes_written -= pfi->path_len + 1;
             }
-            printf("%d - received %d bytes from %d\n", mpi_rank, actually_received, stat.MPI_SOURCE);
         }
     }
 
@@ -439,7 +458,13 @@ int main(int argc, char **argv)
         return 0;
     }
 
+    PROF_END(phase1);
+
+    PROF_START(load_db);
     PersistentDB *pdb = pdb_init();
+    PROF_END(load_db);
+
+    PROF_START(phase2);
 
     int mpi_bcast_rank;
     MPI_Comm_rank(comm, &mpi_bcast_rank);
@@ -476,7 +501,6 @@ int main(int argc, char **argv)
                 s += s_len + 1;
                 nitems += 1;
             }
-            printf("%d - nitems = %zu\n", mpi_rank, nitems);
             path_bytes = name_bytes_written;
             memcpy(worklist_keys, flat_file_names, path_bytes);
             fih_term(file_info_hash);
@@ -502,6 +526,18 @@ int main(int argc, char **argv)
 
     pdb_term(pdb);
     pdb = NULL;
+
+    PROF_END(phase2);
+    PROF_END(total);
+
+    if (mpi_rank == 0) {
+        printf("Overall timings: \n");
+        printf("init    | %9.2f ms\n", 1e3*PROF_VAL(init));
+        printf("phase1  | %9.2f ms\n", 1e3*PROF_VAL(phase1));
+        printf("load_db | %9.2f ms\n", 1e3*PROF_VAL(load_db));
+        printf("phase2  | %9.2f ms\n", 1e3*PROF_VAL(phase2));
+        printf("total   | %9.2f ms\n", 1e3*PROF_VAL(total));
+    }
 
     MPI_Finalize();
     return 0;
