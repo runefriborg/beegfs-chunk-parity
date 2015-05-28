@@ -105,7 +105,8 @@ uint64_t div_round_up(uint64_t a, uint64_t b)
 static
 void xor_parity(uint8_t *restrict dst, size_t nbytes, const uint8_t *data, int nsources)
 {
-    for (int j = 0; j < nsources; j++)
+    memcpy(dst, data, nbytes);
+    for (int j = 1; j < nsources; j++)
     {
         const uint8_t *src = data + j*nbytes; 
         size_t i = 0;
@@ -139,9 +140,9 @@ void parity_generator(const char *path, const FileInfo *task, TaskInfo ti, int m
         if (TEST_BIT(task->locations, i))
             ranks[j++] = st2rank[i];
 
-    uint8_t *data_a = calloc(active_source_ranks, FILE_TRANSFER_BUFFER_SIZE);
-    uint8_t *data_b = calloc(active_source_ranks, FILE_TRANSFER_BUFFER_SIZE);
-    uint8_t *P_block = calloc(1, FILE_TRANSFER_BUFFER_SIZE);
+    uint8_t *data_a = malloc(active_source_ranks * FILE_TRANSFER_BUFFER_SIZE);
+    uint8_t *data_b = malloc(active_source_ranks * FILE_TRANSFER_BUFFER_SIZE);
+    uint8_t *P_block = malloc(FILE_TRANSFER_BUFFER_SIZE);
     uint64_t max_cs = task->max_chunk_size;
     uint64_t data_left = max_cs;
     size_t buffer_size = MIN(FILE_TRANSFER_BUFFER_SIZE, max_cs);
@@ -209,7 +210,7 @@ void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, int my_st
     int ntargets = active_ranks(task->locations);
     uint64_t data_in_fd = task->max_chunk_size;
     size_t buffer_size = MIN(FILE_TRANSFER_BUFFER_SIZE, task->max_chunk_size);
-    uint8_t *data = calloc(1, FILE_TRANSFER_BUFFER_SIZE);
+    uint8_t *data = malloc(FILE_TRANSFER_BUFFER_SIZE);
     int have_had_error = 0;
     int fd = open_fileid_readonly(path, ti.load_pat);
     uint64_t fd_size = 0;
@@ -222,6 +223,7 @@ void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, int my_st
         if (ti.is_rebuilding && ti.actual_P_st == my_st)
             fd_size -= ntargets*sizeof(uint64_t);
     }
+
     size_t read_from_fd = 0;
     while (read_from_fd < data_in_fd)
     {
@@ -244,6 +246,7 @@ void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, int my_st
     }
     else if (!ti.is_rebuilding)
         send_sync_message_to(coordinator, sizeof(fd_size), (uint8_t *)&fd_size);
+
     free(data);
     close(fd);
 }
