@@ -13,6 +13,7 @@
 
 #include "file_info_hash.h"
 #include "../common/persistent_db.h"
+#include "../common/progress_reporting.h"
 
 #include "../common/common.h"
 #define MAX_TARGETS MAX_STORAGE_TARGETS
@@ -476,6 +477,8 @@ int main(int argc, char **argv)
      * We have now sent info on all out chunks, and received info on all chunks
      * that we are responsible for.
      * */
+    ProgressSender pr_sender;
+    memset(&pr_sender, 0, sizeof(pr_sender));
     for (int i = 1; i < mpi_bcast_size; i++)
     {
         size_t nitems = 0;
@@ -511,17 +514,44 @@ int main(int argc, char **argv)
         MPI_Bcast(&path_bytes, sizeof(path_bytes), MPI_BYTE, i, comm);
         MPI_Bcast(worklist_keys, path_bytes, MPI_BYTE, i, comm);
 
+        if (nitems == 0)
+            continue;
+
+        if (mpi_rank == 0) {
+            pr_receive_loop(mpi_bcast_size-1);
+            continue;
+        }
+
+        ProgressSample pr_sample = {0.0, 0, 0};
+
         TaskInfo ti = { "", "         parity", 0, -1 };
         size_t j = 0;
         const char *s = worklist_keys;
         while (j < nitems)
         {
+            struct timespec tv1;
+            clock_gettime(CLOCK_MONOTONIC, &tv1);
             size_t s_len = strlen(s);
-            process_task(my_st, s, worklist_info + j, ti);
+            int report = process_task(my_st, s, worklist_info + j, ti);
             pdb_set(pdb, s, s_len, worklist_info + j);
             s += s_len + 1;
             j += 1;
+            struct timespec tv2;
+            clock_gettime(CLOCK_MONOTONIC, &tv2);
+            double dt = (tv2.tv_sec - tv1.tv_sec) * 1.0
+                + (tv2.tv_nsec - tv1.tv_nsec) * 1e-9;
+            if (report) {
+                pr_sample.dt += dt;
+                pr_sample.nfiles += 1;
+                pr_sample.nbytes += worklist_info[j-1].max_chunk_size;
+            }
+            if (pr_sample.dt >= 1.0) {
+                pr_report_progress(&pr_sender, pr_sample);
+                memset(&pr_sample, 0, sizeof(pr_sample));
+            }
         }
+        pr_report_progress(&pr_sender, pr_sample);
+        pr_report_done(&pr_sender);
     }
 
     pdb_term(pdb);
