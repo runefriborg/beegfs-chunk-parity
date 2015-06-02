@@ -35,7 +35,7 @@ int fih_add_info(FileInfoHash *fih, char *key, int src, uint64_t size, uint64_t 
     }
     fi->max_chunk_size = MAX(fi->max_chunk_size, size);
     fi->timestamp = time;
-    fi->locations |= (1 << src);
+    fi->locations |= (1ULL << src);
     return (r == 0);
 }
 
