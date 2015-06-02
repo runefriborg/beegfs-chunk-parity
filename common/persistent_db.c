@@ -31,12 +31,12 @@ PersistentDB* pdb_init()
     leveldb_writeoptions_set_sync(write_options, 0);
     char *errmsg = NULL;
     leveldb_t *db = leveldb_open(db_options, "/tmp/persistent-db", &errmsg);
-    PersistentDB *res = calloc(1, sizeof(PersistentDB));
     if (errmsg != NULL) {
         fprintf(stderr, "%s\n", errmsg);
         return NULL;
     }
     leveldb_free(errmsg);
+    PersistentDB *res = calloc(1, sizeof(PersistentDB));
     res->options = db_options;
     res->cache = cache;
     res->wopts = write_options;
