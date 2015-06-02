@@ -229,7 +229,7 @@ void feed_targets_with(FILE *input_file, unsigned ntargets)
             uint64_t timestamp_secs = ((uint64_t *)bufp)[0];
             uint64_t byte_size = ((uint64_t *)bufp)[1];
             uint64_t len_of_path = ((uint64_t *)bufp)[2];
-            if (3*sizeof(uint64_t) + len_of_path > buf_alive) {
+            if (3*sizeof(uint64_t) + len_of_path + 1 > buf_alive) {
                 buf_offset = buf_alive;
                 memmove(buf, bufp, buf_alive);
                 break;
@@ -245,6 +245,10 @@ void feed_targets_with(FILE *input_file, unsigned ntargets)
             counter += 1;
             bufp += len_of_path + 3*sizeof(uint64_t) + 1;
             buf_alive -= len_of_path + 3*sizeof(uint64_t) + 1;
+        }
+        if (3*sizeof(uint64_t) >= buf_alive) {
+            buf_offset = buf_alive;
+            memmove(buf, bufp, buf_alive);
         }
     }
     send_remaining_data_to_targets();
@@ -518,6 +522,7 @@ int main(int argc, char **argv)
             continue;
 
         if (mpi_rank == 0) {
+            printf("\n==== begin iteration with %zu files ====\n", nitems);
             pr_receive_loop(mpi_bcast_size-1);
             continue;
         }
