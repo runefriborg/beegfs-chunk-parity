@@ -1,2 +1,2 @@
 default:
-	$(CC) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) main.c -o bp-find-all-chunks
+	$(CC) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) main.c -o ../../bin/bp-find-all-chunks
