@@ -116,13 +116,6 @@ static ssize_t  dst_in_transit[MAX_TARGETS] = {0};
 static MPI_Request async_send_req[MAX_TARGETS] = {0};
 static uint8_t dst_buffer[MAX_TARGETS][TARGET_BUFFER_SIZE];
 
-static FileInfoHash *file_info_hash;
-#define MAX_WORKITEMS (1000*1000)
-static char flat_file_names[MAX_WORKITEMS*100];
-static size_t name_bytes_written;
-static FileInfo worklist_info[MAX_WORKITEMS];
-static char worklist_keys[sizeof(flat_file_names)];
-
 static
 int is_done_with_prev_async_send(int target)
 {
@@ -374,6 +367,14 @@ int main(int argc, char **argv)
 
     PROF_START(phase1);
 
+#ifndef MAX_WORKITEMS
+#define MAX_WORKITEMS (1ULL*1000*1000)
+#endif
+    FileInfoHash *file_info_hash = NULL;
+    size_t name_bytes_written = 0;
+    const size_t name_bytes_limit = MAX_WORKITEMS*100;
+    char *flat_file_names = malloc(name_bytes_limit);
+
     /*
      * In phase 1 we have 3 kinds of processes:
      *  - global coordinator
@@ -441,7 +442,7 @@ int main(int argc, char **argv)
             while (i < actually_received) {
                 packed_file_info *pfi = (packed_file_info *)(recv_buffer+i);
                 i += sizeof(packed_file_info) + pfi->path_len;
-                if (name_bytes_written + pfi->path_len + 1 >= sizeof(flat_file_names))
+                if (name_bytes_written + pfi->path_len + 1 >= name_bytes_limit)
                     continue;
                 /*printf("%d - received '%.*s' from %d\n", mpi_rank, (uint32_t)(pfi->path_len), pfi->path, src);*/
                 char *n = flat_file_names + name_bytes_written;
@@ -470,6 +471,9 @@ int main(int argc, char **argv)
     PROF_END(load_db);
 
     PROF_START(phase2);
+
+    FileInfo *worklist_info = malloc(MAX_WORKITEMS*sizeof(FileInfo));
+    char *worklist_keys = malloc(name_bytes_limit);
 
     int mpi_bcast_rank;
     MPI_Comm_rank(comm, &mpi_bcast_rank);
@@ -561,6 +565,9 @@ int main(int argc, char **argv)
 
     pdb_term(pdb);
     pdb = NULL;
+    free(flat_file_names);
+    free(worklist_info);
+    free(worklist_keys);
 
     PROF_END(phase2);
     PROF_END(total);
