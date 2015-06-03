@@ -9,8 +9,8 @@ LEVELDB=""
 CACHEDIR="."
 BINDIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 
-# Settings
-BEEGFSMOUNT="/faststorage"
+# Load configuration
+. ${BINDIR}/beegfs-conf.sh
 
 failed_params=0
 
@@ -56,7 +56,7 @@ cd ${CACHEDIR}
 echo "Creating file lists ${CACHEDIR}/output.*"
 
 # Create file lists
-${BINDIR}/filelist-runner ${#BEEGFSMOUNT} "${DIR}"
+${BINDIR}/filelist-runner ${#CONF_BEEGFS_MOUNT} "${DIR}"
 
 if [ ! "$?" -eq 0 ]; then
         echo "Aborted! Check system consistency!"
@@ -71,7 +71,7 @@ echo "Total count: ${FILES}"
 echo "Write entries to LevelDB: ${LEVELDB}"
 
 # Get entries and create db
-LD_LIBRARY_PATH=/project/SystemWork/leveldb ${BINDIR}/getentry-runner ${FILES} ${LEVELDB}
+LD_LIBRARY_PATH=${CONF_LEVELDB_LIBPATH} ${BINDIR}/getentry-runner ${FILES} ${LEVELDB}
 
 if [ ! "$?" -eq 0 ]; then
         echo "Aborted! Check system consistency!"

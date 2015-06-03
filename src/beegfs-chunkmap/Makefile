@@ -1,16 +1,17 @@
-LEVELDB=/project/SystemWork/leveldb
+include ../beegfs-conf.sh
 
-CPPFLAGS?=-I${LEVELDB}/include -Wall -Wextra -pedantic -std=gnu99 -g -Os
-LDFLAGS?=-L${LEVELDB}
+CPPFLAGS?=-I${CONF_LEVELDB_INCLUDEPATH} -Wall -Wextra -pedantic -std=gnu99 -g -Os
+LDFLAGS?=-L${CONF_LEVELDB_LIBPATH}
 SOURCES=perf.c filelist-runner.c getentry-runner.c
 OBJECTS=$(SOURCES:.c=.o)
 PROGRAMS=filelist-runner getentry-runner beegfs-chunkmap
 
 all: $(PROGRAMS)
+	cp -f ../beegfs-conf.sh ../../bin/
 
 clean:
 	rm -f ${OBJECTS}
-	rm -f ${PROGRAMS}
+	cd ../../bin/ && rm -f ${PROGRAMS}
 
 %.o: %.c Makefile
 	$(CC) -c $(CPPFLAGS) $(CFLAGS) $< -o $@
@@ -26,3 +27,4 @@ getentry-runner: perf.o getentry-runner.o
 beegfs-chunkmap: beegfs-chunkmap.sh
 	cp -f $^ $@
 	mv -f $@ ../../bin/
+
