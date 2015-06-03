@@ -1,0 +1,63 @@
+#!/bin/bash
+set -o nounset
+set -o pipefail
+set -o errexit
+
+arg1="${1:-}"
+dname="beegfs-parity"
+last_successful_timestamp_file="/opt/$dname/spool/last-gen-timestamp"
+groups="store01"
+
+function usage {
+echo "usage: beegfs-parity-rebuild"
+}
+
+case $arg1 in
+    -h|--help)
+    usage
+    exit 0
+    ;;
+    "")
+    ;;
+    *)
+    usage 1>&2
+    exit 1
+    ;;
+esac
+
+if [[ $EUID -ne 0 ]]; then
+    echo "You need root privilege to run this program" 1>&2
+    exit 1
+fi
+if [ "`hostname -s`" != "s10n50" ]; then
+    echo "Should only run on s10n50" 1>&2
+    exit 1
+fi
+
+# Make sure all necessary folders are present
+mkdir --parents "/opt/$dname/run"
+mkdir --parents "/opt/$dname/spool"
+mkdir --parents "/opt/$dname/etc"
+
+(
+if flock --exclusive --nonblock 500; then
+    if [ ! -f "$last_successful_timestamp_file" ]; then
+        echo "** Error: Does not look like you have built any pariy" 1>&2
+        exit 1
+    fi
+
+    # TODO: Auto discover which node is down, or take as param.
+    rebuild_target="3"
+
+    for group in $groups; do
+        mkdir --parents "/opt/$dname/spool/$group"
+        echo `hostname -s` > /opt/$dname/run/hosts
+        cat "/opt/$dname/etc/$group.hosts" >> "/opt/$dname/run/hosts"
+        mpirun="mpirun --hostfile /opt/$dname/run/hosts"
+        $mpirun ./bp-parity-rebuild $rebuild_target /$group /opt/$dname/spool/$group/data
+    done
+else
+    echo "** Error: Can't acquire lock, is the program already running?" 1>&2
+fi
+) 500>"/opt/$dname/run/lock"
+
