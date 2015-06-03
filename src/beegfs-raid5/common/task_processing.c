@@ -38,6 +38,12 @@ void send_sync_message_to(int recieving_rank, int msg_size, const uint8_t msg[st
 {
     MPI_Send((void*)msg, msg_size, MPI_BYTE, recieving_rank, 0, MPI_COMM_WORLD);
 }
+static
+void recv_sync_message_from(int sending_rank, int size, void *dst)
+{
+    MPI_Status stat;
+    MPI_Recv(dst, size, MPI_BYTE, sending_rank, 0, MPI_COMM_WORLD, &stat);
+}
 
 static
 void path_with_subst(char *res, size_t len, const char *path, const char *pat)
@@ -131,6 +137,12 @@ void parity_generator(const char *path, const FileInfo *task, TaskInfo ti, int m
         MPI_Irecv((loc), (size), MPI_BYTE, ranks[ii], \
                 0, MPI_COMM_WORLD, &source_messages[ii]); \
     } while(0)
+#define SEND_ALL(data, data_size) do { \
+    for (int ii = 0; ii < active_source_ranks; ii++) \
+        MPI_Isend((data), (data_size), MPI_BYTE, ranks[ii], \
+                0, MPI_COMM_WORLD, &source_messages[ii]); \
+    MPI_Waitall(active_source_ranks, source_messages, source_stat); \
+    } while(0)
 
     MPI_Request source_messages[MAX_STORAGE_TARGETS];
     MPI_Status source_stat[MAX_STORAGE_TARGETS];
@@ -140,15 +152,40 @@ void parity_generator(const char *path, const FileInfo *task, TaskInfo ti, int m
         if (TEST_BIT(task->locations, i))
             ranks[j++] = st2rank[i];
 
+    uint64_t chunk_sizes[MAX_STORAGE_TARGETS];
+    /* When rebuilding we need the stored chunk sizes from the parity block on
+     * ti.actual_P_st */
+    if (ti.is_rebuilding)
+    {
+        recv_sync_message_from(
+                st2rank[ti.actual_P_st],
+                active_source_ranks*sizeof(uint64_t),
+                chunk_sizes);
+    }
+    else
+    {
+        IRECV_ALL(src, chunk_sizes + src, sizeof(uint64_t));
+        MPI_Waitall(active_source_ranks, source_messages, source_stat);
+    }
+
+    uint64_t max_cs = 0;
+    for (int i = 0; i < active_source_ranks; i++)
+        max_cs = MAX(max_cs, chunk_sizes[i]);
+    SEND_ALL(&max_cs, sizeof(max_cs));
+
     uint8_t *data_a = malloc(active_source_ranks * FILE_TRANSFER_BUFFER_SIZE);
     uint8_t *data_b = malloc(active_source_ranks * FILE_TRANSFER_BUFFER_SIZE);
     uint8_t *P_block = malloc(FILE_TRANSFER_BUFFER_SIZE);
-    uint64_t max_cs = task->max_chunk_size;
     uint64_t data_left = max_cs;
     size_t buffer_size = MIN(FILE_TRANSFER_BUFFER_SIZE, max_cs);
     int expected_messages = div_round_up(max_cs, FILE_TRANSFER_BUFFER_SIZE);
     int P_fd = open_fileid_new_parity(path, max_cs + active_source_ranks*8, ti.save_pat);
     int P_local_write_error = (P_fd < 0);
+
+    /* If we are not rebuilding, we store all chunk sizes at the start of the
+     * parity file. */
+    if (!ti.is_rebuilding)
+        P_local_write_error |= (write(P_fd, chunk_sizes, sizeof(uint64_t)*active_source_ranks) <= 0);
 
     for (int msg_i = 0; msg_i < expected_messages; msg_i++)
     {
@@ -170,36 +207,18 @@ void parity_generator(const char *path, const FileInfo *task, TaskInfo ti, int m
         data_b = tmp;
     }
 
-    uint64_t chunk_sizes[MAX_STORAGE_TARGETS];
-    if (ti.is_rebuilding)
-    {
-        /* receive total size from ti.actual_P_st and truncate if necessary? */
-        MPI_Status stat;
-        MPI_Recv(chunk_sizes,
-                active_source_ranks*sizeof(uint64_t),
-                MPI_BYTE,
-                st2rank[ti.actual_P_st],
-                0,
-                MPI_COMM_WORLD,
-                &stat);
+    if (ti.is_rebuilding) {
         uint64_t loc = task->locations & ~(1 << ti.actual_P_st) & L_MASK;
         uint64_t my_mask = (1 << my_st) - 1; /* 1's up to my_st */
         int my_index = active_ranks(loc & my_mask);
         ftruncate(P_fd, chunk_sizes[my_index]);
-    }
-    else
-    {
-        /* We only need the full file size when rebuilding, so it can be stored in
-         * the parity file, rather than the databse. */
-        IRECV_ALL(src, chunk_sizes + src, sizeof(uint64_t));
-        MPI_Waitall(active_source_ranks, source_messages, source_stat);
-        P_local_write_error |= (write(P_fd, chunk_sizes, sizeof(uint64_t)*active_source_ranks) <= 0);
     }
 
     free(P_block);
     free(data_a);
     free(data_b);
     close(P_fd);
+#undef SEND_ALL
 #undef IRECV_ALL
 }
 
@@ -208,9 +227,6 @@ void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, int my_st
 {
     int coordinator = P_rank(task);
     int ntargets = active_ranks(task->locations);
-    uint64_t data_in_fd = task->max_chunk_size;
-    size_t buffer_size = MIN(FILE_TRANSFER_BUFFER_SIZE, task->max_chunk_size);
-    uint8_t *data = malloc(FILE_TRANSFER_BUFFER_SIZE);
     int have_had_error = 0;
     int fd = open_fileid_readonly(path, ti.load_pat);
     uint64_t fd_size = 0;
@@ -223,6 +239,20 @@ void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, int my_st
         if (ti.is_rebuilding && ti.actual_P_st == my_st)
             fd_size -= ntargets*sizeof(uint64_t);
     }
+
+    if (ti.is_rebuilding && ti.actual_P_st == my_st) {
+        uint64_t chunk_sizes[MAX_STORAGE_TARGETS];
+        read(fd, chunk_sizes, ntargets*sizeof(uint64_t));
+        send_sync_message_to(coordinator, ntargets*sizeof(uint64_t), (uint8_t*)chunk_sizes);
+    }
+    else if (!ti.is_rebuilding)
+        send_sync_message_to(coordinator, sizeof(fd_size), (uint8_t *)&fd_size);
+
+    uint64_t data_in_fd = 0;
+    recv_sync_message_from(coordinator, sizeof(data_in_fd), &data_in_fd);
+
+    size_t buffer_size = MIN(FILE_TRANSFER_BUFFER_SIZE, data_in_fd);
+    uint8_t *data = malloc(FILE_TRANSFER_BUFFER_SIZE);
 
     size_t read_from_fd = 0;
     while (read_from_fd < data_in_fd)
@@ -239,13 +269,6 @@ void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, int my_st
         read_from_fd += buffer_size;
         send_sync_message_to(coordinator, buffer_size, data);
     }
-    if (ti.is_rebuilding && ti.actual_P_st == my_st) {
-        uint64_t chunk_sizes[MAX_STORAGE_TARGETS];
-        read(fd, chunk_sizes, ntargets*sizeof(uint64_t));
-        send_sync_message_to(coordinator, ntargets*sizeof(uint64_t), (uint8_t*)chunk_sizes);
-    }
-    else if (!ti.is_rebuilding)
-        send_sync_message_to(coordinator, sizeof(fd_size), (uint8_t *)&fd_size);
 
     free(data);
     close(fd);
