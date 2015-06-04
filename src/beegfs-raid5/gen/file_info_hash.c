@@ -23,7 +23,7 @@ void fih_term(FileInfoHash *fih)
     free(fih);
 }
 
-int fih_add_info(FileInfoHash *fih, char *key, int src, uint64_t size, uint64_t time)
+int fih_add_info(FileInfoHash *fih, char *key, int src, uint64_t time)
 {
     khash_t(fih) *h = fih->h;
     int r;
@@ -33,7 +33,6 @@ int fih_add_info(FileInfoHash *fih, char *key, int src, uint64_t size, uint64_t 
         memset(fi, 0, sizeof(FileInfo));
         fi->locations = WITH_P(0ULL, NO_P);
     }
-    fi->max_chunk_size = MAX(fi->max_chunk_size, size);
     fi->timestamp = time;
     fi->locations |= (1ULL << src);
     return (r == 0);

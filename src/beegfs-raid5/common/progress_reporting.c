@@ -4,9 +4,25 @@
 #include "common.h"
 #include "progress_reporting.h"
 
+void pr_add_tmp_to_total(ProgressSample *sample)
+{
+    sample->total_time += sample->dt;
+    sample->total_nfiles += sample->nfiles;
+    sample->total_bytes_read += sample->bytes_read;
+    sample->total_bytes_written += sample->bytes_written;
+}
+
+void pr_clear_tmp(ProgressSample *sample)
+{
+    sample->dt = 0.0;
+    sample->nfiles = 0;
+    sample->bytes_read = 0;
+    sample->bytes_written = 0;
+}
+
 void pr_report_progress(ProgressSender *s, ProgressSample sample)
 {
-    if (sample.nfiles == 0 || sample.nbytes == 0)
+    if (sample.nfiles == 0)
         return;
 
     if (s->needs_wait) {
@@ -29,7 +45,8 @@ void pr_report_progress(ProgressSender *s, ProgressSample sample)
 
 void pr_report_done(ProgressSender *s)
 {
-    ProgressSample sample = {0.0, ~0, ~0};
+    ProgressSample sample = PROGRESS_SAMPLE_INIT;
+    sample.nfiles = ~0;
     pr_report_progress(s, sample);
 }
 
@@ -46,10 +63,12 @@ void pr_receive_loop(int clients)
             remaining_clients -= 1;
         }
         else {
-            printf("%2d - %7zu files | %9.2f MiB/s | %9.0f files/s\n",
+            printf("%2d - %7zu files | %9zu MiB | %9zu MiB | %9.2f MiB/s | %9.0f files/s\n",
                     stat.MPI_SOURCE,
-                    sample.nfiles,
-                    ((double)sample.nbytes / 1024 / 1024) / sample.dt,
+                    sample.total_nfiles,
+                    sample.total_bytes_read / 1024 / 1024,
+                    sample.total_bytes_written / 1024 / 1024,
+                    ((double)(sample.bytes_read + sample.bytes_written) / 1024 / 1024) / sample.dt,
                     sample.nfiles / sample.dt);
             fflush(stdout);
         }
