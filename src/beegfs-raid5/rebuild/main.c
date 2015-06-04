@@ -44,10 +44,11 @@ int do_file(const char *key, size_t keylen, const FileInfo *fi)
 
     int my_st = rank2st[mpi_rank];
     int P = GET_P(fi->locations);
-    if (P == NO_P)
-        goto done;
-    if (P != rebuild_target && TEST_BIT(fi->locations, rebuild_target) == 0)
-        goto done; /* rebuild target is not involved in this item */
+    if (P == NO_P
+            || P == rebuild_target
+            || TEST_BIT(fi->locations, rebuild_target) == 0)
+        return 0;
+
     if (helper == my_st) {
         /* Send fi, key to rebuild_target so it knows whats up */
         MPI_Ssend((void*)fi, sizeof(FileInfo), MPI_BYTE, st2rank[rebuild_target], 0, MPI_COMM_WORLD);
@@ -95,7 +96,6 @@ int do_file(const char *key, size_t keylen, const FileInfo *fi)
         pr_report_progress(&pr_sender, pr_sample);
         pr_clear_tmp(&pr_sample);
     }
-done:
     return 0;
 }
 
