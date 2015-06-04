@@ -477,12 +477,10 @@ int main(int argc, char **argv)
     MPI_Comm_size(comm, &mpi_bcast_size);
     int my_st = rank2st[mpi_rank];
 
-    /*
-     * We have now sent info on all out chunks, and received info on all chunks
-     * that we are responsible for.
-     * */
     ProgressSender pr_sender;
     memset(&pr_sender, 0, sizeof(pr_sender));
+    ProgressSample pr_sample = PROGRESS_SAMPLE_INIT;
+
     for (int i = 1; i < mpi_bcast_size; i++)
     {
         size_t nitems = 0;
@@ -523,11 +521,10 @@ int main(int argc, char **argv)
 
         if (mpi_rank == 0) {
             printf("\n==== begin iteration with %zu files ====\n", nitems);
+            printf("st - total files   | data read     | data written  | disk I/O\n");
             pr_receive_loop(mpi_bcast_size-1);
             continue;
         }
-
-        ProgressSample pr_sample = {0.0, 0, 0};
 
         TaskInfo ti = { "", "         parity", 0, -1 };
         size_t j = 0;
@@ -537,7 +534,7 @@ int main(int argc, char **argv)
             struct timespec tv1;
             clock_gettime(CLOCK_MONOTONIC, &tv1);
             size_t s_len = strlen(s);
-            int report = process_task(my_st, s, worklist_info + j, ti, &pr_sample.nbytes);
+            int report = process_task(my_st, s, worklist_info + j, ti, &pr_sample);
             pdb_set(pdb, s, s_len, worklist_info + j);
             s += s_len + 1;
             j += 1;
@@ -550,8 +547,9 @@ int main(int argc, char **argv)
                 pr_sample.nfiles += 1;
             }
             if (pr_sample.dt >= 1.0) {
+                pr_add_tmp_to_total(&pr_sample);
                 pr_report_progress(&pr_sender, pr_sample);
-                memset(&pr_sample, 0, sizeof(pr_sample));
+                pr_clear_tmp(&pr_sample);
             }
         }
         pr_report_progress(&pr_sender, pr_sample);

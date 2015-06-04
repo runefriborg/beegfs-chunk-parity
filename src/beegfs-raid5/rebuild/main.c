@@ -34,7 +34,7 @@ int st2rank[MAX_STORAGE_TARGETS];
 int rank2st[MAX_STORAGE_TARGETS+1];
 
 static ProgressSender pr_sender;
-static ProgressSample pr_sample = {0.0, 0, 0};
+static ProgressSample pr_sample = PROGRESS_SAMPLE_INIT;
 
 
 int do_file(const char *key, size_t keylen, const FileInfo *fi)
@@ -71,7 +71,7 @@ int do_file(const char *key, size_t keylen, const FileInfo *fi)
         mod_fi.locations = WITH_P(mod_fi.locations, (uint64_t)rebuild_target);
     }
     TaskInfo ti = { load_pat, save_pat, (P != rebuild_target), P };
-    int report = process_task(my_st, key, &mod_fi, ti, &pr_sample.nbytes);
+    int report = process_task(my_st, key, &mod_fi, ti, &pr_sample);
 #if 0
 #define FIRST_8_BITS(x)     ((x) & 0x80 ? 1 : 0), ((x) & 0x40 ? 1 : 0), \
       ((x) & 0x20 ? 1 : 0), ((x) & 0x10 ? 1 : 0), ((x) & 0x08 ? 1 : 0), \
@@ -91,8 +91,9 @@ int do_file(const char *key, size_t keylen, const FileInfo *fi)
         pr_sample.nfiles += 1;
     }
     if (pr_sample.dt >= 1.0) {
+        pr_add_tmp_to_total(&pr_sample);
         pr_report_progress(&pr_sender, pr_sample);
-        memset(&pr_sample, 0, sizeof(pr_sample));
+        pr_clear_tmp(&pr_sample);
     }
 done:
     return 0;
@@ -236,6 +237,7 @@ int main(int argc, char **argv)
     }
     else if (mpi_rank == 0)
     {
+        printf("st - total files   | data read     | data written  | disk I/O\n");
         pr_receive_loop(ntargets-1);
     }
 

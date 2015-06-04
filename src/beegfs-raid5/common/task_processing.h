@@ -9,7 +9,7 @@ int process_task(
         const char *path,
         const FileInfo *fi,
         TaskInfo ti,
-        size_t *nbytes);
+        ProgressSample *sample);
 
 #endif
 

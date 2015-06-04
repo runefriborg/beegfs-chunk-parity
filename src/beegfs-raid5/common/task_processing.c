@@ -131,7 +131,7 @@ void xor_parity(uint8_t *restrict dst, size_t nbytes, const uint8_t *data, int n
  *      receives data from chunk sources, calculate and store parity
  */
 static
-void parity_generator(const char *path, const FileInfo *task, TaskInfo ti, int my_st, size_t *nbytes)
+void parity_generator(const char *path, const FileInfo *task, TaskInfo ti, int my_st, ProgressSample *sample)
 {
 #define IRECV_ALL(ii, loc, size) do { \
     for (int ii = 0; ii < active_source_ranks; ii++) \
@@ -173,7 +173,15 @@ void parity_generator(const char *path, const FileInfo *task, TaskInfo ti, int m
     for (int i = 0; i < active_source_ranks; i++)
         max_cs = MAX(max_cs, chunk_sizes[i]);
     SEND_ALL(&max_cs, sizeof(max_cs));
-    *nbytes = *nbytes + max_cs;
+
+    size_t final_parity_chunk_size = max_cs + active_source_ranks*sizeof(uint64_t);
+    if (ti.is_rebuilding) {
+        uint64_t loc = task->locations & ~(1 << ti.actual_P_st) & L_MASK;
+        uint64_t my_mask = (1 << my_st) - 1; /* 1's up to my_st */
+        int my_index = active_ranks(loc & my_mask);
+        final_parity_chunk_size = chunk_sizes[my_index];
+    }
+    sample->bytes_written += final_parity_chunk_size;
 
     uint8_t *data_a = malloc(active_source_ranks * FILE_TRANSFER_BUFFER_SIZE);
     uint8_t *data_b = malloc(active_source_ranks * FILE_TRANSFER_BUFFER_SIZE);
@@ -210,10 +218,7 @@ void parity_generator(const char *path, const FileInfo *task, TaskInfo ti, int m
     }
 
     if (ti.is_rebuilding) {
-        uint64_t loc = task->locations & ~(1 << ti.actual_P_st) & L_MASK;
-        uint64_t my_mask = (1 << my_st) - 1; /* 1's up to my_st */
-        int my_index = active_ranks(loc & my_mask);
-        ftruncate(P_fd, chunk_sizes[my_index]);
+        ftruncate(P_fd, final_parity_chunk_size);
     }
 
     free(P_block);
@@ -225,7 +230,7 @@ void parity_generator(const char *path, const FileInfo *task, TaskInfo ti, int m
 }
 
 static
-void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, int my_st, size_t *nbytes)
+void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, int my_st, ProgressSample *sample)
 {
     int coordinator = P_rank(task);
     int ntargets = active_ranks(task->locations);
@@ -241,7 +246,7 @@ void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, int my_st
         if (ti.is_rebuilding && ti.actual_P_st == my_st)
             fd_size -= ntargets*sizeof(uint64_t);
     }
-    *nbytes = *nbytes + fd_size;
+    sample->bytes_read += fd_size;
 
     if (ti.is_rebuilding && ti.actual_P_st == my_st) {
         uint64_t chunk_sizes[MAX_STORAGE_TARGETS];
@@ -278,15 +283,15 @@ void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, int my_st
 }
 
 /* Returns non-zero if we are involved in the task */
-int process_task(int my_st, const char *path, const FileInfo *fi, TaskInfo ti, size_t *nbytes)
+int process_task(int my_st, const char *path, const FileInfo *fi, TaskInfo ti, ProgressSample *sample)
 {
     if (GET_P(fi->locations) == NO_P)
         return 0;
 
     if (GET_P(fi->locations) == my_st)
-        parity_generator(path, fi, ti, my_st, nbytes);
+        parity_generator(path, fi, ti, my_st, sample);
     else if (my_st >= 0 && TEST_BIT(fi->locations, my_st))
-        chunk_sender(path, fi, ti, my_st, nbytes);
+        chunk_sender(path, fi, ti, my_st, sample);
     else
         return 0;
     return 1;
