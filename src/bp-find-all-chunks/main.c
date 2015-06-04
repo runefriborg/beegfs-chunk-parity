@@ -16,7 +16,7 @@ int visitor(const char *fpath, const struct stat *sb, int typeflag)
     if (typeflag != FTW_F)
         return 0;
     size_t len = strlen(fpath);
-    size_t fields[3] = {sb->st_mtime, sb->st_size, len};
+    size_t fields[2] = {sb->st_mtime, len};
     if (sizeof(fields) + len + buffer_written >= sizeof(buffer)) {
         write(1, buffer, buffer_written);
         buffer_written = 0;

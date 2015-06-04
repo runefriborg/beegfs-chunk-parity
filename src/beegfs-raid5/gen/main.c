@@ -11,11 +11,12 @@
 
 #include <mpi.h>
 
-#include "file_info_hash.h"
+#include "../common/common.h"
 #include "../common/persistent_db.h"
 #include "../common/progress_reporting.h"
+#include "../common/task_processing.h"
+#include "file_info_hash.h"
 
-#include "../common/common.h"
 #define MAX_TARGETS MAX_STORAGE_TARGETS
 #define TARGET_BUFFER_SIZE (10*1024*1024)
 #define TARGET_SEND_THRESHOLD (1*1024*1024)
@@ -72,12 +73,11 @@ int st_from_feeder_rank(int feeder)
 }
 
 /*
- * Combine the two `locations` fields and max_chunk_size.
+ * Combine the two `locations` fields.
  * The P value is only copied over if it isn't present in `dst->locations`
  */
 static void fill_in_missing_fields(FileInfo *dst, const FileInfo *src)
 {
-    dst->max_chunk_size = MAX(dst->max_chunk_size, src->max_chunk_size);
     uint64_t old_P = GET_P(src->locations);
     dst->locations = (dst->locations | src->locations) & L_MASK;
     if (TEST_BIT(dst->locations, old_P) == 0)
@@ -105,7 +105,6 @@ choose_P_again:
 }
 
 typedef struct {
-    uint64_t byte_size;
     uint64_t timestamp;
     uint64_t path_len;
     char path[];
@@ -159,7 +158,7 @@ void begin_async_send(int target)
 }
 
 static
-void push_to_target(int target, const char *path, int path_len, uint64_t byte_size, uint64_t timestamp)
+void push_to_target(int target, const char *path, int path_len, uint64_t timestamp)
 {
     assert(0 <= target && target < MAX_TARGETS);
     assert(path != NULL);
@@ -178,7 +177,7 @@ void push_to_target(int target, const char *path, int path_len, uint64_t byte_si
         finish_prev_async_send(target);
     }
 
-    packed_file_info finfo = {byte_size, timestamp, path_len};
+    packed_file_info finfo = {timestamp, path_len};
     uint8_t *dst = dst_buffer[target] + written;
     memcpy(dst, &finfo, sizeof(packed_file_info));
     memcpy(dst + sizeof(packed_file_info), path, path_len);
@@ -218,28 +217,26 @@ void feed_targets_with(FILE *input_file, unsigned ntargets)
     {
         size_t buf_alive = buf_offset + read;
         const char *bufp = buf;
-        while (buf_alive >= 3*sizeof(uint64_t)) {
+        while (buf_alive >= 2*sizeof(uint64_t)) {
             uint64_t timestamp_secs = ((uint64_t *)bufp)[0];
-            uint64_t byte_size = ((uint64_t *)bufp)[1];
-            uint64_t len_of_path = ((uint64_t *)bufp)[2];
-            if (3*sizeof(uint64_t) + len_of_path + 1 > buf_alive) {
+            uint64_t len_of_path = ((uint64_t *)bufp)[1];
+            if (2*sizeof(uint64_t) + len_of_path + 1 > buf_alive) {
                 buf_offset = buf_alive;
                 memmove(buf, bufp, buf_alive);
                 break;
             }
-            const char *path = bufp + 3*sizeof(uint64_t);
+            const char *path = bufp + 2*sizeof(uint64_t);
             unsigned st = (simple_hash(path, len_of_path)) % ntargets;
             push_to_target(
                     st,
                     path,
                     len_of_path,
-                    byte_size,
                     timestamp_secs);
             counter += 1;
-            bufp += len_of_path + 3*sizeof(uint64_t) + 1;
-            buf_alive -= len_of_path + 3*sizeof(uint64_t) + 1;
+            bufp += len_of_path + 2*sizeof(uint64_t) + 1;
+            buf_alive -= len_of_path + 2*sizeof(uint64_t) + 1;
         }
-        if (3*sizeof(uint64_t) >= buf_alive) {
+        if (2*sizeof(uint64_t) >= buf_alive) {
             buf_offset = buf_alive;
             memmove(buf, bufp, buf_alive);
         }
@@ -452,7 +449,6 @@ int main(int argc, char **argv)
                 if (fih_add_info(file_info_hash,
                         n,
                         st_from_feeder_rank(src),
-                        pfi->byte_size,
                         pfi->timestamp))
                     name_bytes_written -= pfi->path_len + 1;
             }
@@ -541,7 +537,7 @@ int main(int argc, char **argv)
             struct timespec tv1;
             clock_gettime(CLOCK_MONOTONIC, &tv1);
             size_t s_len = strlen(s);
-            int report = process_task(my_st, s, worklist_info + j, ti);
+            int report = process_task(my_st, s, worklist_info + j, ti, &pr_sample.nbytes);
             pdb_set(pdb, s, s_len, worklist_info + j);
             s += s_len + 1;
             j += 1;
@@ -552,7 +548,6 @@ int main(int argc, char **argv)
             if (report) {
                 pr_sample.dt += dt;
                 pr_sample.nfiles += 1;
-                pr_sample.nbytes += worklist_info[j-1].max_chunk_size;
             }
             if (pr_sample.dt >= 1.0) {
                 pr_report_progress(&pr_sender, pr_sample);

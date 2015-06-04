@@ -13,6 +13,7 @@
 
 #include "../common/common.h"
 #include "../common/progress_reporting.h"
+#include "../common/task_processing.h"
 #include "../common/persistent_db.h"
 
 #define PROF_START(name) \
@@ -70,7 +71,7 @@ int do_file(const char *key, size_t keylen, const FileInfo *fi)
         mod_fi.locations = WITH_P(mod_fi.locations, (uint64_t)rebuild_target);
     }
     TaskInfo ti = { load_pat, save_pat, (P != rebuild_target), P };
-    int report = process_task(my_st, key, &mod_fi, ti);
+    int report = process_task(my_st, key, &mod_fi, ti, &pr_sample.nbytes);
 #if 0
 #define FIRST_8_BITS(x)     ((x) & 0x80 ? 1 : 0), ((x) & 0x40 ? 1 : 0), \
       ((x) & 0x20 ? 1 : 0), ((x) & 0x10 ? 1 : 0), ((x) & 0x08 ? 1 : 0), \
@@ -88,7 +89,6 @@ int do_file(const char *key, size_t keylen, const FileInfo *fi)
     if (report) {
         pr_sample.dt += dt;
         pr_sample.nfiles += 1;
-        pr_sample.nbytes += mod_fi.max_chunk_size;
     }
     if (pr_sample.dt >= 1.0) {
         pr_report_progress(&pr_sender, pr_sample);

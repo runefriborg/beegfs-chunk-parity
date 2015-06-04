@@ -12,7 +12,6 @@
 #define NO_P UINT64_C(0xFF)
 
 typedef struct {
-    uint64_t max_chunk_size;
     uint64_t timestamp;
     uint64_t locations;
 } FileInfo;
@@ -29,8 +28,6 @@ typedef struct {
     int ntargets;
     Target targetIDs[MAX_STORAGE_TARGETS];
 } RunData;
-
-int process_task(int my_st, const char *path, const FileInfo *fi, TaskInfo ti);
 
 #define MAX(a,b) ((a) > (b)? (a) : (b))
 #define MIN(a,b) ((a) < (b)? (a) : (b))
