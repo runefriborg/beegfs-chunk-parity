@@ -20,12 +20,11 @@ Setting up the logger
 
 To install the logger module:
 
-make
-make install 
+`make && make install``
 
 To inject the logger into beegfs modify its init.d-script and add:
 
-"LD_PRELOAD=/usr/lib64/chunkmod_filelist.so"
+`LD_PRELOAD=/usr/lib64/chunkmod_filelist.so`
 
 
 Chunkmods will be logged to `/dev/shm/chunkmod_intercept/`
