@@ -26,6 +26,7 @@
 #define LOGFOLDER      "/dev/shm/chunkmod_intercept/"
 #define LOGFILE_PREFIX "close_logging"
 #define DEBUGLOG       "/var/log/chunkmod-logs/chunkmod-intercept.log"
+#define DEBUGDIR       "/var/log/chunkmod-logs"
 
 
 #define DEBUG true
@@ -230,6 +231,14 @@ void init(void)__attribute__((constructor));
 void init(void)
 {
 	pthread_mutex_init(&lock,NULL);
+
+#ifdef DEBUG
+	int ret = mkdir(DEBUGDIR, S_IRUSR | S_IWUSR | S_IXUSR);
+	if(ret != 0 && errno != EEXIST) {
+		printf("Could not create debug-dir '%s'.\n", DEBUGDIR);
+		return;
+	}
+#endif
 
 	debug("-----------\n");
 	debug("Creating log-dir...\n");
