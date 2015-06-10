@@ -552,7 +552,9 @@ int main(int argc, char **argv)
                 pr_clear_tmp(&pr_sample);
             }
         }
+        pr_add_tmp_to_total(&pr_sample);
         pr_report_progress(&pr_sender, pr_sample);
+        pr_clear_tmp(&pr_sample);
         pr_report_done(&pr_sender);
     }
 
