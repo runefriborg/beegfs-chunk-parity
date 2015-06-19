@@ -107,6 +107,7 @@ choose_P_again:
 typedef struct {
     uint64_t timestamp;
     uint64_t path_len;
+    uint64_t event_type;
     char path[];
 } packed_file_info;
 
@@ -158,7 +159,7 @@ void begin_async_send(int target)
 }
 
 static
-void push_to_target(int target, const char *path, int path_len, uint64_t timestamp)
+void push_to_target(int target, const char *path, int path_len, uint64_t timestamp, uint8_t event_type)
 {
     assert(0 <= target && target < MAX_TARGETS);
     assert(path != NULL);
@@ -177,7 +178,7 @@ void push_to_target(int target, const char *path, int path_len, uint64_t timesta
         finish_prev_async_send(target);
     }
 
-    packed_file_info finfo = {timestamp, path_len};
+    packed_file_info finfo = {timestamp, path_len, event_type};
     uint8_t *dst = dst_buffer[target] + written;
     memcpy(dst, &finfo, sizeof(packed_file_info));
     memcpy(dst + sizeof(packed_file_info), path, path_len);
@@ -217,26 +218,28 @@ void feed_targets_with(FILE *input_file, unsigned ntargets)
     {
         size_t buf_alive = buf_offset + read;
         const char *bufp = buf;
-        while (buf_alive >= 2*sizeof(uint64_t)) {
+        while (buf_alive >= 3*sizeof(uint64_t)) {
             uint64_t timestamp_secs = ((uint64_t *)bufp)[0];
             uint64_t len_of_path = ((uint64_t *)bufp)[1];
-            if (2*sizeof(uint64_t) + len_of_path > buf_alive) {
+            uint64_t event_type = ((uint64_t *)bufp)[2];
+            if (3*sizeof(uint64_t) + len_of_path > buf_alive) {
                 buf_offset = buf_alive;
                 memmove(buf, bufp, buf_alive);
                 break;
             }
-            const char *path = bufp + 2*sizeof(uint64_t);
+            const char *path = bufp + 3*sizeof(uint64_t);
             unsigned st = (simple_hash(path, len_of_path)) % ntargets;
             push_to_target(
                     st,
                     path,
                     len_of_path,
-                    timestamp_secs);
+                    timestamp_secs,
+                    event_type);
             counter += 1;
-            bufp += len_of_path + 2*sizeof(uint64_t);
-            buf_alive -= len_of_path + 2*sizeof(uint64_t);
+            bufp += len_of_path + 3*sizeof(uint64_t);
+            buf_alive -= len_of_path + 3*sizeof(uint64_t);
         }
-        if (2*sizeof(uint64_t) >= buf_alive) {
+        if (3*sizeof(uint64_t) >= buf_alive) {
             buf_offset = buf_alive;
             memmove(buf, bufp, buf_alive);
         }

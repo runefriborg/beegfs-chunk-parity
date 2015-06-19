@@ -3,6 +3,9 @@
 
 #include <stdint.h>
 
+#define MODIFY_EVENT 0
+#define UNLINK_EVENT 1
+
 #define MAX_STORAGE_TARGETS 56
 #define TEST_BIT(x,i) ((x) & (1ULL << (i)))
 #define GET_P(loc) ((int)((loc) >> 56))

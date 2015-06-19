@@ -8,6 +8,9 @@
 
 #include <ftw.h>
 
+#define MODIFY_EVENT 0
+#define UNLINK_EVENT 1
+
 char buffer[64*1024] = {0};
 int buffer_written = 0;
 
@@ -16,7 +19,7 @@ int visitor(const char *fpath, const struct stat *sb, int typeflag)
     if (typeflag != FTW_F)
         return 0;
     size_t len = strlen(fpath);
-    size_t fields[2] = {sb->st_mtime, len};
+    size_t fields[3] = {sb->st_mtime, len, MODIFY_EVENT};
     if (sizeof(fields) + len + buffer_written >= sizeof(buffer)) {
         write(1, buffer, buffer_written);
         buffer_written = 0;
