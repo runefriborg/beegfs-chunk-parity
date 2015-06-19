@@ -153,6 +153,14 @@ void parity_generator(const char *path, const FileInfo *task, TaskInfo ti, int m
         if (TEST_BIT(task->locations, i))
             ranks[j++] = st2rank[i];
 
+    /* If no one has a chunk, it is safe to delete the parity data */
+    if (active_source_ranks == 0) {
+        char tmp[256];
+        path_with_subst(tmp, strlen(path), path, ti.save_pat);
+        unlink(tmp);
+        return;
+    }
+
     uint64_t chunk_sizes[MAX_STORAGE_TARGETS];
     /* When rebuilding we need the stored chunk sizes from the parity block on
      * ti.actual_P_st */

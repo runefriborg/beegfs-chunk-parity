@@ -452,7 +452,8 @@ int main(int argc, char **argv)
                 if (fih_add_info(file_info_hash,
                         n,
                         st_from_feeder_rank(src),
-                        pfi->timestamp))
+                        pfi->timestamp,
+                        (pfi->event_type == UNLINK_EVENT)))
                     name_bytes_written -= pfi->path_len + 1;
             }
         }
@@ -499,11 +500,15 @@ int main(int argc, char **argv)
             {
                 size_t s_len = strlen(s);
                 FileInfo prev_fi;
-                int has_an_old_version = pdb_get(pdb, s, s_len, &prev_fi);
+                FatFileInfo new_fi;
                 FileInfo *fi = worklist_info + nitems;
-                fih_get(file_info_hash, s, fi);
+                fih_get(file_info_hash, s, &new_fi);
+                fi->timestamp = new_fi.timestamp;
+                fi->locations = WITH_P(new_fi.modified, NO_P);
+                int has_an_old_version = pdb_get(pdb, s, s_len, &prev_fi);
                 if (has_an_old_version)
                     fill_in_missing_fields(fi, &prev_fi);
+                fi->locations &= ~new_fi.deleted;
                 if (GET_P(fi->locations) == NO_P)
                     select_P(s, fi, (unsigned)ntargets);
                 s += s_len + 1;
@@ -538,7 +543,10 @@ int main(int argc, char **argv)
             clock_gettime(CLOCK_MONOTONIC, &tv1);
             size_t s_len = strlen(s);
             int report = process_task(my_st, s, worklist_info + j, ti, &pr_sample);
-            pdb_set(pdb, s, s_len, worklist_info + j);
+            if (worklist_info[j].locations & L_MASK)
+                pdb_set(pdb, s, s_len, worklist_info + j);
+            else
+                pdb_del(pdb, s, s_len);
             s += s_len + 1;
             j += 1;
             struct timespec tv2;
