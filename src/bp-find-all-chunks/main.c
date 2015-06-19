@@ -24,8 +24,7 @@ int visitor(const char *fpath, const struct stat *sb, int typeflag)
     memcpy(buffer + buffer_written, &fields, sizeof(fields));
     buffer_written += sizeof(fields);
     memcpy(buffer + buffer_written, fpath, len);
-    buffer[buffer_written + len] = 0;
-    buffer_written += len + 1;
+    buffer_written += len;
     return 0;
 }
 

@@ -220,7 +220,7 @@ void feed_targets_with(FILE *input_file, unsigned ntargets)
         while (buf_alive >= 2*sizeof(uint64_t)) {
             uint64_t timestamp_secs = ((uint64_t *)bufp)[0];
             uint64_t len_of_path = ((uint64_t *)bufp)[1];
-            if (2*sizeof(uint64_t) + len_of_path + 1 > buf_alive) {
+            if (2*sizeof(uint64_t) + len_of_path > buf_alive) {
                 buf_offset = buf_alive;
                 memmove(buf, bufp, buf_alive);
                 break;
@@ -233,8 +233,8 @@ void feed_targets_with(FILE *input_file, unsigned ntargets)
                     len_of_path,
                     timestamp_secs);
             counter += 1;
-            bufp += len_of_path + 2*sizeof(uint64_t) + 1;
-            buf_alive -= len_of_path + 2*sizeof(uint64_t) + 1;
+            bufp += len_of_path + 2*sizeof(uint64_t);
+            buf_alive -= len_of_path + 2*sizeof(uint64_t);
         }
         if (2*sizeof(uint64_t) >= buf_alive) {
             buf_offset = buf_alive;
