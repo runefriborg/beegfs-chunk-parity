@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdlib.h>
+#include <stdint.h>
 
 
 /* @return:
@@ -28,6 +30,19 @@ int parse_entry()
 	unsigned long time;
 	memcpy(&time,_time,sizeof(_time));
 
+	printf("%u ",time);
+	fflush(stdout);
+
+        // Next up one byte type
+	unsigned long type;
+	retval = read(stdin->_fileno, &type,sizeof(type));
+
+	if(retval <= 0) // Malformed string or i/o error
+		return -1;
+
+	printf("%c ",(char)type);
+	fflush(stdout);
+
 	//Next 8 bytes should be a unsigned long with the lenght of the string
 	//to come
 	char _len[8];
@@ -38,15 +53,17 @@ int parse_entry()
 	unsigned long len;
 	memcpy(&len,_len,sizeof(_len));
 
-	printf("%u ",time);
 	printf("%u ",len);
+	fflush(stdout);
 
 	char path[len];
 	read(stdin->_fileno, path,len);
 	if(retval <= 0) // Malformed string or i/o error
 		return -1;
 
-	printf("%s\n",path);
+	//printf("%s\n",path);
+	write(stdout->_fileno, &path, len);
+	putchar('\n');
 	return 1;
 }
 

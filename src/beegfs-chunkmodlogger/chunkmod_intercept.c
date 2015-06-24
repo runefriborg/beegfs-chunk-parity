@@ -163,7 +163,7 @@ int unlinkat(int dirfd, const char *pathname, int flags)
 	int retval = _original_unlinkat(dirfd, pathname, flags); 
 	if(retval == 0) {
 		debug("unlinkat()      path='%s/%s'. Writing log.\n",dirpath,pathname);
-		write_log("%llu %s/%s\n",time(NULL),dirpath,pathname);
+		write_log("%llu d %s/%s\n",time(NULL),dirpath,pathname);
 	}
 	else
 		debug("unlinkat()      path='%s/%s'. unlinkat returned error, ignoring.\n",dirpath,pathname);
@@ -214,7 +214,7 @@ int close(int fd)
 		snprintf(filename,512,"%s/%s",dirpath,open_files[fd]);
 		debug("close()    fd='%d', path='%s'. threadid='%08x'.  Writing log.\n",fd,filename,(unsigned int)pthread_self());
 		//char *path = open_files[fd];
-		write_log("%llu %s\n",time(NULL),filename);
+		write_log("%llu m %s\n",time(NULL),filename);
 		open_files[fd] = NULL;
 	}
 	else{

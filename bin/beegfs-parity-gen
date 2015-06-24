@@ -45,7 +45,7 @@ mkdir --parents "/opt/$dname/etc"
 
 function check_beegfs_servers_online {
 #TODO: any other ways the servers can be down?
-if fhgfs-check-servers | grep -q "UNREACHABLE\|failed"; then
+if beegfs-check-servers | grep -q "UNREACHABLE\|failed"; then
     return 1
 fi
 return 0
