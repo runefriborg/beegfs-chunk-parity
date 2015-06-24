@@ -259,7 +259,7 @@ int main(int argc, char **argv)
 
     MPI_Barrier(MPI_COMM_WORLD);
     char *iter = hs.corrupt;
-    for (int i = 0; i < hs.corrupt_count; i++)
+    for (size_t i = 0; i < hs.corrupt_count; i++)
     {
         printf("Potentially corrupt chunk: '%s'\n", iter);
         iter += strlen(iter);
