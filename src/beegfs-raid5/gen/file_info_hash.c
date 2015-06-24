@@ -23,7 +23,7 @@ void fih_term(FileInfoHash *fih)
     free(fih);
 }
 
-int fih_add_info(FileInfoHash *fih, char *key, int src, uint64_t time, int rm)
+int fih_add_info(FileInfoHash *fih, char *key, int src, int64_t time, int rm)
 {
     khash_t(fih) *h = fih->h;
     int r;
@@ -31,7 +31,7 @@ int fih_add_info(FileInfoHash *fih, char *key, int src, uint64_t time, int rm)
     FatFileInfo *fi = &kh_val(h, it);
     if (r == 1)
         memset(fi, 0, sizeof(FatFileInfo));
-    fi->timestamp = time;
+    fi->timestamp = MAX(fi->timestamp, time);
     if (rm)
         fi->deleted |= (1ULL << src);
     else

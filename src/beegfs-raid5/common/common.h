@@ -15,7 +15,7 @@
 #define NO_P UINT64_C(0xFF)
 
 typedef struct {
-    uint64_t timestamp;
+    int64_t timestamp;
     uint64_t locations;
 } FileInfo;
 

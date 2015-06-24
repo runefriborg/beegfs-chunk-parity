@@ -105,7 +105,7 @@ choose_P_again:
 }
 
 typedef struct {
-    uint64_t timestamp;
+    int64_t timestamp;
     uint64_t path_len;
     uint64_t event_type;
     char path[];
@@ -159,7 +159,7 @@ void begin_async_send(int target)
 }
 
 static
-void push_to_target(int target, const char *path, int path_len, uint64_t timestamp, uint8_t event_type)
+void push_to_target(int target, const char *path, int path_len, int64_t timestamp, uint8_t event_type)
 {
     assert(0 <= target && target < MAX_TARGETS);
     assert(path != NULL);
@@ -219,7 +219,7 @@ void feed_targets_with(FILE *input_file, unsigned ntargets)
         size_t buf_alive = buf_offset + read;
         const char *bufp = buf;
         while (buf_alive >= 3*sizeof(uint64_t)) {
-            uint64_t timestamp_secs = ((uint64_t *)bufp)[0];
+            int64_t timestamp_secs = ((int64_t *)bufp)[0];
             uint64_t len_of_path = ((uint64_t *)bufp)[1];
             uint64_t event_type = ((uint64_t *)bufp)[2];
             if (3*sizeof(uint64_t) + len_of_path > buf_alive) {
@@ -484,6 +484,10 @@ int main(int argc, char **argv)
     ProgressSender pr_sender;
     memset(&pr_sender, 0, sizeof(pr_sender));
     ProgressSample pr_sample = PROGRESS_SAMPLE_INIT;
+    HostState hs;
+    memset(&hs, 0, sizeof(hs));
+    hs.storage_target = my_st;
+    hs.sample = &pr_sample;
 
     for (int i = 1; i < mpi_bcast_size; i++)
     {
@@ -542,7 +546,7 @@ int main(int argc, char **argv)
             struct timespec tv1;
             clock_gettime(CLOCK_MONOTONIC, &tv1);
             size_t s_len = strlen(s);
-            int report = process_task(my_st, s, worklist_info + j, ti, &pr_sample);
+            int report = process_task(&hs, s, worklist_info + j, ti);
             if (worklist_info[j].locations & L_MASK)
                 pdb_set(pdb, s, s_len, worklist_info + j);
             else

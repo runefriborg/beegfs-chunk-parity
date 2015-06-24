@@ -48,6 +48,8 @@ void pr_report_done(ProgressSender *s)
     ProgressSample sample = PROGRESS_SAMPLE_INIT;
     sample.nfiles = ~0;
     pr_report_progress(s, sample);
+    MPI_Status stat;
+    MPI_Wait(&s->request, &stat);
 }
 
 void pr_receive_loop(int clients)
