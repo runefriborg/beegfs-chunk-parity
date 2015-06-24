@@ -214,6 +214,7 @@ int main(int argc, char **argv)
             int dummy;
             MPI_Ssend((void*)&dummy, sizeof(dummy), MPI_BYTE, st2rank[rebuild_target], 0, MPI_COMM_WORLD);
         }
+        pr_add_tmp_to_total(&pr_sample);
         pr_report_progress(&pr_sender, pr_sample);
         pr_report_done(&pr_sender);
     }
@@ -236,6 +237,7 @@ int main(int argc, char **argv)
             MPI_Recv(&fi, sizeof(FileInfo), MPI_BYTE, helper_rank, 0, MPI_COMM_WORLD, &stat);
             MPI_Get_count(&stat, MPI_BYTE, &count);
         }
+        pr_add_tmp_to_total(&pr_sample);
         pr_report_progress(&pr_sender, pr_sample);
         pr_report_done(&pr_sender);
     }
