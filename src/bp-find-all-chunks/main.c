@@ -8,6 +8,9 @@
 
 #include <ftw.h>
 
+#define MODIFY_EVENT 0
+#define UNLINK_EVENT 1
+
 char buffer[64*1024] = {0};
 int buffer_written = 0;
 
@@ -24,8 +27,7 @@ int visitor(const char *fpath, const struct stat *sb, int typeflag)
     memcpy(buffer + buffer_written, &fields, sizeof(fields));
     buffer_written += sizeof(fields);
     memcpy(buffer + buffer_written, fpath, len);
-    buffer[buffer_written + len] = 0;
-    buffer_written += len + 1;
+    buffer_written += len;
     return 0;
 }
 

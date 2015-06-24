@@ -35,6 +35,7 @@ int rank2st[MAX_STORAGE_TARGETS+1];
 
 static ProgressSender pr_sender;
 static ProgressSample pr_sample = PROGRESS_SAMPLE_INIT;
+static HostState hs;
 
 
 int do_file(const char *key, size_t keylen, const FileInfo *fi)
@@ -48,6 +49,9 @@ int do_file(const char *key, size_t keylen, const FileInfo *fi)
             || P == rebuild_target
             || TEST_BIT(fi->locations, rebuild_target) == 0)
         return 0;
+
+    hs.storage_target = my_st;
+    hs.sample = &pr_sample;
 
     if (helper == my_st) {
         /* Send fi, key to rebuild_target so it knows whats up */
@@ -72,7 +76,7 @@ int do_file(const char *key, size_t keylen, const FileInfo *fi)
         mod_fi.locations = WITH_P(mod_fi.locations, (uint64_t)rebuild_target);
     }
     TaskInfo ti = { load_pat, save_pat, (P != rebuild_target), P };
-    int report = process_task(my_st, key, &mod_fi, ti, &pr_sample);
+    int report = process_task(&hs, key, &mod_fi, ti);
 #if 0
 #define FIRST_8_BITS(x)     ((x) & 0x80 ? 1 : 0), ((x) & 0x40 ? 1 : 0), \
       ((x) & 0x20 ? 1 : 0), ((x) & 0x10 ? 1 : 0), ((x) & 0x08 ? 1 : 0), \
@@ -210,6 +214,7 @@ int main(int argc, char **argv)
             int dummy;
             MPI_Ssend((void*)&dummy, sizeof(dummy), MPI_BYTE, st2rank[rebuild_target], 0, MPI_COMM_WORLD);
         }
+        pr_add_tmp_to_total(&pr_sample);
         pr_report_progress(&pr_sender, pr_sample);
         pr_report_done(&pr_sender);
     }
@@ -232,6 +237,7 @@ int main(int argc, char **argv)
             MPI_Recv(&fi, sizeof(FileInfo), MPI_BYTE, helper_rank, 0, MPI_COMM_WORLD, &stat);
             MPI_Get_count(&stat, MPI_BYTE, &count);
         }
+        pr_add_tmp_to_total(&pr_sample);
         pr_report_progress(&pr_sender, pr_sample);
         pr_report_done(&pr_sender);
     }
@@ -249,6 +255,14 @@ int main(int argc, char **argv)
         printf("init       | %9.2f ms\n", 1e3*PROF_VAL(init));
         printf("main_work  | %9.2f ms\n", 1e3*PROF_VAL(main_work));
         printf("total      | %9.2f ms\n", 1e3*PROF_VAL(total));
+    }
+
+    MPI_Barrier(MPI_COMM_WORLD);
+    char *iter = hs.corrupt;
+    for (size_t i = 0; i < hs.corrupt_count; i++)
+    {
+        printf("Potentially corrupt chunk: '%s'\n", iter);
+        iter += strlen(iter);
     }
 
     MPI_Finalize();

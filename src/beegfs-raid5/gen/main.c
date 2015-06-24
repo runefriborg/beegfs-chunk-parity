@@ -105,8 +105,9 @@ choose_P_again:
 }
 
 typedef struct {
-    uint64_t timestamp;
+    int64_t timestamp;
     uint64_t path_len;
+    uint64_t event_type;
     char path[];
 } packed_file_info;
 
@@ -158,7 +159,7 @@ void begin_async_send(int target)
 }
 
 static
-void push_to_target(int target, const char *path, int path_len, uint64_t timestamp)
+void push_to_target(int target, const char *path, int path_len, int64_t timestamp, uint8_t event_type)
 {
     assert(0 <= target && target < MAX_TARGETS);
     assert(path != NULL);
@@ -177,7 +178,7 @@ void push_to_target(int target, const char *path, int path_len, uint64_t timesta
         finish_prev_async_send(target);
     }
 
-    packed_file_info finfo = {timestamp, path_len};
+    packed_file_info finfo = {timestamp, path_len, event_type};
     uint8_t *dst = dst_buffer[target] + written;
     memcpy(dst, &finfo, sizeof(packed_file_info));
     memcpy(dst + sizeof(packed_file_info), path, path_len);
@@ -217,26 +218,28 @@ void feed_targets_with(FILE *input_file, unsigned ntargets)
     {
         size_t buf_alive = buf_offset + read;
         const char *bufp = buf;
-        while (buf_alive >= 2*sizeof(uint64_t)) {
-            uint64_t timestamp_secs = ((uint64_t *)bufp)[0];
-            uint64_t len_of_path = ((uint64_t *)bufp)[1];
-            if (2*sizeof(uint64_t) + len_of_path + 1 > buf_alive) {
+        while (buf_alive >= 3*sizeof(uint64_t)) {
+            int64_t timestamp_secs = ((int64_t *)bufp)[0];
+            uint64_t event_type = ((uint64_t *)bufp)[1];
+            uint64_t len_of_path = ((uint64_t *)bufp)[2];
+            if (3*sizeof(uint64_t) + len_of_path > buf_alive) {
                 buf_offset = buf_alive;
                 memmove(buf, bufp, buf_alive);
                 break;
             }
-            const char *path = bufp + 2*sizeof(uint64_t);
+            const char *path = bufp + 3*sizeof(uint64_t);
             unsigned st = (simple_hash(path, len_of_path)) % ntargets;
             push_to_target(
                     st,
                     path,
                     len_of_path,
-                    timestamp_secs);
+                    timestamp_secs,
+                    event_type);
             counter += 1;
-            bufp += len_of_path + 2*sizeof(uint64_t) + 1;
-            buf_alive -= len_of_path + 2*sizeof(uint64_t) + 1;
+            bufp += len_of_path + 3*sizeof(uint64_t);
+            buf_alive -= len_of_path + 3*sizeof(uint64_t);
         }
-        if (2*sizeof(uint64_t) >= buf_alive) {
+        if (3*sizeof(uint64_t) >= buf_alive) {
             buf_offset = buf_alive;
             memmove(buf, bufp, buf_alive);
         }
@@ -449,7 +452,8 @@ int main(int argc, char **argv)
                 if (fih_add_info(file_info_hash,
                         n,
                         st_from_feeder_rank(src),
-                        pfi->timestamp))
+                        pfi->timestamp,
+                        (pfi->event_type == UNLINK_EVENT)))
                     name_bytes_written -= pfi->path_len + 1;
             }
         }
@@ -480,6 +484,10 @@ int main(int argc, char **argv)
     ProgressSender pr_sender;
     memset(&pr_sender, 0, sizeof(pr_sender));
     ProgressSample pr_sample = PROGRESS_SAMPLE_INIT;
+    HostState hs;
+    memset(&hs, 0, sizeof(hs));
+    hs.storage_target = my_st;
+    hs.sample = &pr_sample;
 
     for (int i = 1; i < mpi_bcast_size; i++)
     {
@@ -496,11 +504,15 @@ int main(int argc, char **argv)
             {
                 size_t s_len = strlen(s);
                 FileInfo prev_fi;
-                int has_an_old_version = pdb_get(pdb, s, s_len, &prev_fi);
+                FatFileInfo new_fi;
                 FileInfo *fi = worklist_info + nitems;
-                fih_get(file_info_hash, s, fi);
+                fih_get(file_info_hash, s, &new_fi);
+                fi->timestamp = new_fi.timestamp;
+                fi->locations = WITH_P(new_fi.modified, NO_P);
+                int has_an_old_version = pdb_get(pdb, s, s_len, &prev_fi);
                 if (has_an_old_version)
                     fill_in_missing_fields(fi, &prev_fi);
+                fi->locations &= ~new_fi.deleted;
                 if (GET_P(fi->locations) == NO_P)
                     select_P(s, fi, (unsigned)ntargets);
                 s += s_len + 1;
@@ -534,8 +546,11 @@ int main(int argc, char **argv)
             struct timespec tv1;
             clock_gettime(CLOCK_MONOTONIC, &tv1);
             size_t s_len = strlen(s);
-            int report = process_task(my_st, s, worklist_info + j, ti, &pr_sample);
-            pdb_set(pdb, s, s_len, worklist_info + j);
+            int report = process_task(&hs, s, worklist_info + j, ti);
+            if (worklist_info[j].locations & L_MASK)
+                pdb_set(pdb, s, s_len, worklist_info + j);
+            else
+                pdb_del(pdb, s, s_len);
             s += s_len + 1;
             j += 1;
             struct timespec tv2;

@@ -68,6 +68,17 @@ void pdb_set(PersistentDB *pdb, const char *key, size_t keylen, const FileInfo *
     leveldb_free(errmsg);
 }
 
+void pdb_del(PersistentDB *pdb, const char *key, size_t keylen)
+{
+    char *errmsg = NULL;
+    leveldb_delete(
+            pdb->db,
+            pdb->wopts,
+            key, keylen,
+            &errmsg);
+    leveldb_free(errmsg);
+}
+
 int pdb_get(const PersistentDB *pdb, const char *key, size_t keylen, FileInfo *val)
 {
     size_t fi_len;
