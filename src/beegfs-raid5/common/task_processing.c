@@ -60,14 +60,9 @@ void path_with_subst(char *res, size_t len, const char *path, const char *pat)
 static
 void push_corrupt_path(HostState *hs, const char *path)
 {
-    size_t to_copy = strlen(path) + 1;
-    if (to_copy + hs->corrupt_bytes_used > hs->corrupt_alloc) {
-        hs->corrupt_alloc = MAX(hs->corrupt_alloc*2, to_copy*10);
-        hs->corrupt = realloc(hs->corrupt, hs->corrupt_alloc);
-    }
-    memcpy(hs->corrupt + hs->corrupt_bytes_used, path, to_copy);
-    hs->corrupt_bytes_used += to_copy;
-    hs->corrupt_count += 1;
+    write(hs->corrupt_files_fd, path, strlen(path));
+    char newline = '\n';
+    write(hs->corrupt_files_fd, &newline, sizeof(newline));
 }
 
 static

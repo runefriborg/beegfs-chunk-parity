@@ -200,6 +200,8 @@ int main(int argc, char **argv)
 
     if (mpi_rank == 0)
         printf("%d(rank=%d), %d(rank=%d)\n", rebuild_target, st2rank[rebuild_target], helper, st2rank[helper]);
+    else
+        hs.corrupt_files_fd = open(corrupt_list_file, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
 
     PROF_START(main_work);
 
@@ -248,25 +250,18 @@ int main(int argc, char **argv)
         pr_receive_loop(ntargets-1);
     }
 
+    if (mpi_rank != 0)
+        close(hs.corrupt_files_fd);
+
+    MPI_Barrier(MPI_COMM_WORLD);
     PROF_END(main_work);
-    PROF_START(write_corrupt);
 
-    int corrupt_fd = open(corrupt_list_file, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
-    for (size_t i = 0; i < hs.corrupt_bytes_used; i++)
-        if (hs.corrupt[i] == '\0')
-            hs.corrupt[i] = '\n';
-    write(corrupt_fd, hs.corrupt, hs.corrupt_bytes_used);
-    close(corrupt_fd);
-    MPI_Barrier(MPI_COMM_WORLD); /* Only needed for profiling */
-
-    PROF_END(write_corrupt);
     PROF_END(total);
 
     if (mpi_rank == 0) {
         printf("Overall timings: \n");
         printf("init                | %9.2f ms\n", 1e3*PROF_VAL(init));
         printf("main_work           | %9.2f ms\n", 1e3*PROF_VAL(main_work));
-        printf("write_corrupt       | %9.2f ms\n", 1e3*PROF_VAL(write_corrupt));
         printf("total               | %9.2f ms\n", 1e3*PROF_VAL(total));
     }
 
