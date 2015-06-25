@@ -105,9 +105,9 @@ int do_file(const char *key, size_t keylen, const FileInfo *fi)
 
 int main(int argc, char **argv)
 {
-    if (argc != 4)
+    if (argc != 5)
     {
-        fputs("We need 3 arguments\n", stdout);
+        fputs("We need 4 arguments\n", stdout);
         return 1;
     }
 
@@ -118,6 +118,7 @@ int main(int argc, char **argv)
     rebuild_target = atoi(argv[1]);
     const char *store_dir = argv[2];
     const char *data_file = argv[3];
+    const char *corrupt_list_file = argv[4];
 
     int ntargets = mpi_world_size - 1;
     if (ntargets > MAX_STORAGE_TARGETS)
@@ -248,21 +249,25 @@ int main(int argc, char **argv)
     }
 
     PROF_END(main_work);
+    PROF_START(write_corrupt);
+
+    int corrupt_fd = open(corrupt_list_file, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
+    for (size_t i = 0; i < hs.corrupt_bytes_used; i++)
+        if (hs.corrupt[i] == '\0')
+            hs.corrupt[i] = '\n';
+    write(corrupt_fd, hs.corrupt, hs.corrupt_bytes_used);
+    close(corrupt_fd);
+    MPI_Barrier(MPI_COMM_WORLD); /* Only needed for profiling */
+
+    PROF_END(write_corrupt);
     PROF_END(total);
 
     if (mpi_rank == 0) {
         printf("Overall timings: \n");
-        printf("init       | %9.2f ms\n", 1e3*PROF_VAL(init));
-        printf("main_work  | %9.2f ms\n", 1e3*PROF_VAL(main_work));
-        printf("total      | %9.2f ms\n", 1e3*PROF_VAL(total));
-    }
-
-    MPI_Barrier(MPI_COMM_WORLD);
-    char *iter = hs.corrupt;
-    for (size_t i = 0; i < hs.corrupt_count; i++)
-    {
-        printf("Potentially corrupt chunk: '%s'\n", iter);
-        iter += strlen(iter);
+        printf("init                | %9.2f ms\n", 1e3*PROF_VAL(init));
+        printf("main_work           | %9.2f ms\n", 1e3*PROF_VAL(main_work));
+        printf("write_corrupt       | %9.2f ms\n", 1e3*PROF_VAL(write_corrupt));
+        printf("total               | %9.2f ms\n", 1e3*PROF_VAL(total));
     }
 
     MPI_Finalize();
