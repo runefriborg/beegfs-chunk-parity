@@ -16,7 +16,7 @@ struct PersistentDB {
     leveldb_t *db;
 };
 
-PersistentDB* pdb_init()
+PersistentDB* pdb_init(const char *db_folder)
 {
     leveldb_cache_t *cache = leveldb_cache_create_lru(100*1024*1024);
     leveldb_options_t *db_options = leveldb_options_create();
@@ -30,7 +30,7 @@ PersistentDB* pdb_init()
     leveldb_writeoptions_t *write_options = leveldb_writeoptions_create();
     leveldb_writeoptions_set_sync(write_options, 0);
     char *errmsg = NULL;
-    leveldb_t *db = leveldb_open(db_options, "/tmp/persistent-db", &errmsg);
+    leveldb_t *db = leveldb_open(db_options, db_folder, &errmsg);
     if (errmsg != NULL) {
         fprintf(stderr, "%s\n", errmsg);
         return NULL;

@@ -7,11 +7,7 @@
 typedef struct {
     int storage_target;
     ProgressSample *sample;
-    /* Potentially corrupt chunks: */
-    char *corrupt;
-    size_t corrupt_alloc;
-    size_t corrupt_bytes_used;
-    size_t corrupt_count;
+    int corrupt_files_fd;
 } HostState;
 
 int process_task(

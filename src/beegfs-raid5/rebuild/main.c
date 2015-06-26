@@ -105,9 +105,9 @@ int do_file(const char *key, size_t keylen, const FileInfo *fi)
 
 int main(int argc, char **argv)
 {
-    if (argc != 4)
+    if (argc != 6)
     {
-        fputs("We need 3 arguments\n", stdout);
+        fputs("We need 5 arguments\n", stdout);
         return 1;
     }
 
@@ -118,6 +118,8 @@ int main(int argc, char **argv)
     rebuild_target = atoi(argv[1]);
     const char *store_dir = argv[2];
     const char *data_file = argv[3];
+    const char *corrupt_list_file = argv[4];
+    const char *db_folder = argv[5];
 
     int ntargets = mpi_world_size - 1;
     if (ntargets > MAX_STORAGE_TARGETS)
@@ -199,6 +201,8 @@ int main(int argc, char **argv)
 
     if (mpi_rank == 0)
         printf("%d(rank=%d), %d(rank=%d)\n", rebuild_target, st2rank[rebuild_target], helper, st2rank[helper]);
+    else
+        hs.corrupt_files_fd = open(corrupt_list_file, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
 
     PROF_START(main_work);
 
@@ -206,7 +210,7 @@ int main(int argc, char **argv)
 
     if (mpi_rank != 0 && rank2st[mpi_rank] != rebuild_target)
     {
-        PersistentDB *pdb = pdb_init();
+        PersistentDB *pdb = pdb_init(db_folder);
         pdb_iterate(pdb, do_file);
         pdb_term(pdb);
 
@@ -247,22 +251,19 @@ int main(int argc, char **argv)
         pr_receive_loop(ntargets-1);
     }
 
+    if (mpi_rank != 0)
+        close(hs.corrupt_files_fd);
+
+    MPI_Barrier(MPI_COMM_WORLD);
     PROF_END(main_work);
+
     PROF_END(total);
 
     if (mpi_rank == 0) {
         printf("Overall timings: \n");
-        printf("init       | %9.2f ms\n", 1e3*PROF_VAL(init));
-        printf("main_work  | %9.2f ms\n", 1e3*PROF_VAL(main_work));
-        printf("total      | %9.2f ms\n", 1e3*PROF_VAL(total));
-    }
-
-    MPI_Barrier(MPI_COMM_WORLD);
-    char *iter = hs.corrupt;
-    for (size_t i = 0; i < hs.corrupt_count; i++)
-    {
-        printf("Potentially corrupt chunk: '%s'\n", iter);
-        iter += strlen(iter);
+        printf("init                | %9.2f ms\n", 1e3*PROF_VAL(init));
+        printf("main_work           | %9.2f ms\n", 1e3*PROF_VAL(main_work));
+        printf("total               | %9.2f ms\n", 1e3*PROF_VAL(total));
     }
 
     MPI_Finalize();

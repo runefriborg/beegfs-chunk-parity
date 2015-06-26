@@ -50,11 +50,16 @@ if flock --exclusive --nonblock 500; then
     rebuild_target="3"
 
     for group in $groups; do
-        mkdir --parents "/opt/$dname/spool/$group"
+        spool="/opt/$dname/spool/$group"
+        mkdir --parents $spool
         echo `hostname -s` > /opt/$dname/run/hosts
         cat "/opt/$dname/etc/$group.hosts" >> "/opt/$dname/run/hosts"
         mpirun="mpirun --hostfile /opt/$dname/run/hosts"
-        $mpirun ./bp-parity-rebuild $rebuild_target /$group /opt/$dname/spool/$group/data
+        $mpirun ./bp-parity-rebuild $rebuild_target /$group $spool/data /tmp/corrupted_chunks /tmp/$group.db
+        # Collect list of potentially corrupt chunks
+        for h in `cat /opt/$dname/etc/$group.hosts`; do
+            ssh $h cat /tmp/corrupted_chunks
+        done | sort -u > $spool/corrupted_chunks
     done
 else
     echo "** Error: Can't acquire lock, is the program already running?" 1>&2
