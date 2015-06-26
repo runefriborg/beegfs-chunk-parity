@@ -51,7 +51,8 @@ def write_to_stdout():
         assert len(type) is 1
         type_b  = struct.pack('<Q',long(ord(type)))
 
-        sys.stdout.write(time_b+type_b+len_b+path)
+        sys.stdout.write(time_b+type_b+len_b+path+'\0')
+	    
 
 def insert(entries):
     ''' Weed out all but the newest entry for each chunk.
