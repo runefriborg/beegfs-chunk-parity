@@ -105,9 +105,9 @@ int do_file(const char *key, size_t keylen, const FileInfo *fi)
 
 int main(int argc, char **argv)
 {
-    if (argc != 5)
+    if (argc != 6)
     {
-        fputs("We need 4 arguments\n", stdout);
+        fputs("We need 5 arguments\n", stdout);
         return 1;
     }
 
@@ -119,6 +119,7 @@ int main(int argc, char **argv)
     const char *store_dir = argv[2];
     const char *data_file = argv[3];
     const char *corrupt_list_file = argv[4];
+    const char *db_folder = argv[5];
 
     int ntargets = mpi_world_size - 1;
     if (ntargets > MAX_STORAGE_TARGETS)
@@ -209,7 +210,7 @@ int main(int argc, char **argv)
 
     if (mpi_rank != 0 && rank2st[mpi_rank] != rebuild_target)
     {
-        PersistentDB *pdb = pdb_init();
+        PersistentDB *pdb = pdb_init(db_folder);
         pdb_iterate(pdb, do_file);
         pdb_term(pdb);
 

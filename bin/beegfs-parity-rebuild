@@ -55,7 +55,7 @@ if flock --exclusive --nonblock 500; then
         echo `hostname -s` > /opt/$dname/run/hosts
         cat "/opt/$dname/etc/$group.hosts" >> "/opt/$dname/run/hosts"
         mpirun="mpirun --hostfile /opt/$dname/run/hosts"
-        $mpirun ./bp-parity-rebuild $rebuild_target /$group $spool/data /tmp/corrupted_chunks
+        $mpirun ./bp-parity-rebuild $rebuild_target /$group $spool/data /tmp/corrupted_chunks /tmp/$group.db
         # Collect list of potentially corrupt chunks
         truncate --size 0 $spool/corrupted_chunks
         for h in `cat /opt/$dname/etc/$group.hosts`; do

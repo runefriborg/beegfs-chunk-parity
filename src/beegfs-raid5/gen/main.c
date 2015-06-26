@@ -252,8 +252,8 @@ void feed_targets_with(FILE *input_file, unsigned ntargets)
 
 int main(int argc, char **argv)
 {
-    if (argc != 6) {
-        fputs("We need 5 arguments\n", stdout);
+    if (argc != 7) {
+        fputs("We need 6 arguments\n", stdout);
         return 1;
     }
 
@@ -262,6 +262,7 @@ int main(int argc, char **argv)
     const char *timestamp_a = argv[3];
     const char *timestamp_b = argv[4];
     const char *data_file = argv[5];
+    const char *db_folder = argv[6];
 
     PROF_START(total);
 
@@ -467,7 +468,7 @@ int main(int argc, char **argv)
     PROF_END(phase1);
 
     PROF_START(load_db);
-    PersistentDB *pdb = pdb_init();
+    PersistentDB *pdb = pdb_init(db_folder);
     PROF_END(load_db);
 
     PROF_START(phase2);
