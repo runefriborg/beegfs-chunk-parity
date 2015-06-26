@@ -57,10 +57,9 @@ if flock --exclusive --nonblock 500; then
         mpirun="mpirun --hostfile /opt/$dname/run/hosts"
         $mpirun ./bp-parity-rebuild $rebuild_target /$group $spool/data /tmp/corrupted_chunks /tmp/$group.db
         # Collect list of potentially corrupt chunks
-        truncate --size 0 $spool/corrupted_chunks
         for h in `cat /opt/$dname/etc/$group.hosts`; do
-            ssh $h cat /tmp/corrupted_chunks >> $spool/corrupted_chunks
-        done
+            ssh $h cat /tmp/corrupted_chunks
+        done | sort -u > $spool/corrupted_chunks
     done
 else
     echo "** Error: Can't acquire lock, is the program already running?" 1>&2
