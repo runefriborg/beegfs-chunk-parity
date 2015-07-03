@@ -8,6 +8,10 @@ typedef struct {
     int storage_target;
     ProgressSample *sample;
     int corrupt_files_fd;
+    int error;
+    const char *error_path;
+    int fd_null;
+    int fd_zero;
 } HostState;
 
 int process_task(

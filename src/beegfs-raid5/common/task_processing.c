@@ -68,37 +68,25 @@ void push_corrupt_path(HostState *hs, const char *path)
 static
 int open_fileid_readonly(const char *id, const char *load_pat)
 {
-    if (strncmp("/store0", id, 7) != 0) {
-        fputs("ERROR: All input files must start with /store0!"
-                " Reading from /dev/zero.\n", stderr);
-        return open("/dev/zero", O_RDONLY);
-    }
     char tmp[256];
     path_with_subst(tmp, strlen(id), id, load_pat);
     int fd = open(tmp, O_RDONLY);
     if (fd <= 0)
         printf("opened '%s' with error = '%s'\n", tmp, strerror(errno));
-    if (fd < 0)
-        return -errno;
-    posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_WILLNEED);
+    if (fd > 0)
+        posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_WILLNEED);
     return fd;
 }
 
 static
 int open_fileid_new_parity(const char *id, ssize_t expected_size, const char *save_pat)
 {
-    if (strncmp("/store0", id, 7) != 0) {
-        fputs("ERROR: All input files must start with /store0!"
-                " Writing to /dev/null.\n", stderr);
-        return open("/dev/null", O_WRONLY);
-    }
     char tmp[256];
     path_with_subst(tmp, strlen(id), id, save_pat);
     mkdir_for_file(tmp);
     int fd = creat(tmp, S_IRUSR | S_IWUSR);
-    if (fd < 0)
-        return -errno;
-    posix_fallocate(fd, 0, expected_size);
+    if (fd > 0)
+        posix_fallocate(fd, 0, expected_size);
     return fd;
 }
 
@@ -205,13 +193,18 @@ void parity_generator(const char *path, const FileInfo *task, TaskInfo ti, HostS
     uint64_t data_left = max_cs;
     size_t buffer_size = MIN(FILE_TRANSFER_BUFFER_SIZE, max_cs);
     int expected_messages = div_round_up(max_cs, FILE_TRANSFER_BUFFER_SIZE);
-    int P_fd = open_fileid_new_parity(path, max_cs + active_source_ranks*8, ti.save_pat);
-    int P_local_write_error = (P_fd < 0);
+    int P_fd = hs->fd_null;
+    int have_had_error = hs->error;
+    if (have_had_error == 0) {
+        P_fd = open_fileid_new_parity(path, max_cs + active_source_ranks*8, ti.save_pat);
+        have_had_error = (P_fd <= 0) ? errno : 0;
+    }
 
     /* If we are not rebuilding, we store all chunk sizes at the start of the
      * parity file. */
     if (!ti.is_rebuilding)
-        P_local_write_error |= (write(P_fd, chunk_sizes, sizeof(uint64_t)*active_source_ranks) <= 0);
+        if (write(P_fd, chunk_sizes, sizeof(uint64_t)*active_source_ranks) <= 0)
+            have_had_error = errno;
 
     for (int msg_i = 0; msg_i < expected_messages; msg_i++)
     {
@@ -222,11 +215,11 @@ void parity_generator(const char *path, const FileInfo *task, TaskInfo ti, HostS
             IRECV_ALL(src, data_b + src*buffer_size, buffer_size);
         /* calculate P and write to disk while waiting for next data chunk */
         xor_parity(P_block, buffer_size, data_a, active_source_ranks);
-        if (!P_local_write_error) {
+        if (!have_had_error) {
             ssize_t wsize = MIN(buffer_size, data_left);
             ssize_t w = write(P_fd, P_block, wsize);
             data_left -= wsize;
-            P_local_write_error |= (w <= 0);
+            have_had_error = (w <= 0)? errno : 0;
         }
         uint8_t *tmp = data_a;
         data_a = data_b;
@@ -235,6 +228,11 @@ void parity_generator(const char *path, const FileInfo *task, TaskInfo ti, HostS
 
     if (ti.is_rebuilding) {
         ftruncate(P_fd, final_parity_chunk_size);
+    }
+
+    if (hs->error == 0 && have_had_error != 0) {
+        hs->error = have_had_error;
+        hs->error_path = path;
     }
 
     free(P_block);
@@ -251,11 +249,13 @@ void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, HostState
     int my_st = hs->storage_target;
     int coordinator = P_rank(task);
     int ntargets = active_ranks(task->locations);
-    int have_had_error = 0;
-    int fd = open_fileid_readonly(path, ti.load_pat);
     uint64_t fd_size = 0;
-    if (fd < 0)
-        have_had_error = 1;
+    int have_had_error = hs->error;
+    int fd = open_fileid_readonly(path, ti.load_pat);
+    if (have_had_error || fd <= 0) {
+        have_had_error = errno;
+        fd = hs->fd_zero;
+    }
     else {
         struct stat st;
         fstat(fd, &st);
@@ -289,7 +289,7 @@ void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, HostState
         size_t data_left = data_in_fd - read_from_fd;
         if (!have_had_error) {
             ssize_t r = read(fd, data, MIN(buffer_size, data_left));
-            have_had_error |= (r <= 0);
+            have_had_error = (r <= 0)? errno : 0;
             if (have_had_error)
                 memset(data, 0, buffer_size);
             if (r > 0 && (size_t)r < buffer_size)
@@ -297,6 +297,14 @@ void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, HostState
         }
         read_from_fd += buffer_size;
         send_sync_message_to(coordinator, buffer_size, data);
+    }
+
+    /* ENOENT means that the file has disappeared since we decided to do the
+     * task, which means that we should see an unlink at some later point - so
+     * it is not a global error. */
+    if (hs->error == 0 && have_had_error != ENOENT) {
+        hs->error = have_had_error;
+        hs->error_path = path;
     }
 
     free(data);

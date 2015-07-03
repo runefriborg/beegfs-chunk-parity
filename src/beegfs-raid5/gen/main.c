@@ -489,6 +489,8 @@ int main(int argc, char **argv)
     memset(&hs, 0, sizeof(hs));
     hs.storage_target = my_st;
     hs.sample = &pr_sample;
+    hs.fd_null = open("/dev/null", O_WRONLY);
+    hs.fd_zero = open("/dev/zero", O_WRONLY);
 
     for (int i = 1; i < mpi_bcast_size; i++)
     {
@@ -572,6 +574,15 @@ int main(int argc, char **argv)
         pr_report_progress(&pr_sender, pr_sample);
         pr_clear_tmp(&pr_sample);
         pr_report_done(&pr_sender);
+    }
+
+    if (hs.error != 0)
+    {
+        fprintf(stderr, "%s gave error %d (%s) on st %d\n",
+                hs.error_path,
+                hs.error,
+                strerror(hs.error),
+                rank2st[mpi_rank]);
     }
 
     pdb_term(pdb);

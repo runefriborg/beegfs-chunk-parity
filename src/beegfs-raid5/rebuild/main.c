@@ -204,6 +204,9 @@ int main(int argc, char **argv)
     else
         hs.corrupt_files_fd = open(corrupt_list_file, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
 
+    hs.fd_null = open("/dev/null", O_WRONLY);
+    hs.fd_zero = open("/dev/zero", O_WRONLY);
+
     PROF_START(main_work);
 
     memset(&pr_sender, 0, sizeof(pr_sender));
@@ -253,6 +256,15 @@ int main(int argc, char **argv)
 
     if (mpi_rank != 0)
         close(hs.corrupt_files_fd);
+
+    if (hs.error != 0)
+    {
+        fprintf(stderr, "%s gave error %d (%s) on st %d\n",
+                hs.error_path,
+                hs.error,
+                strerror(hs.error),
+                rank2st[mpi_rank]);
+    }
 
     MPI_Barrier(MPI_COMM_WORLD);
     PROF_END(main_work);
