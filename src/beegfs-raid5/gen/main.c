@@ -444,8 +444,8 @@ int main(int argc, char **argv)
                 packed_file_info *pfi = (packed_file_info *)(recv_buffer+i);
                 i += sizeof(packed_file_info) + pfi->path_len;
                 if (name_bytes_written + pfi->path_len + 1 >= name_bytes_limit)
-                    continue;
-                /*printf("%d - received '%.*s' from %d\n", mpi_rank, (uint32_t)(pfi->path_len), pfi->path, src);*/
+                    errx(1, "Only room for %llu bytes of paths. Asked for %llu.",
+                            name_bytes_limit, name_bytes_written + pfi->path_len + 1);
                 char *n = flat_file_names + name_bytes_written;
                 memmove(n, pfi->path, pfi->path_len);
                 n[pfi->path_len] = '\0';
@@ -524,6 +524,8 @@ int main(int argc, char **argv)
                     select_P(s, fi, (unsigned)ntargets);
                 s += s_len + 1;
                 nitems += 1;
+                if (nitems >= MAX_WORKITEMS)
+                    errx(1, "Too many chunks (max = %llu)", MAX_WORKITEMS);
             }
             path_bytes = name_bytes_written;
             memcpy(worklist_keys, flat_file_names, path_bytes);
