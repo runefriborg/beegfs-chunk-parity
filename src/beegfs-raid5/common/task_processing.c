@@ -297,8 +297,7 @@ void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, HostState
 /* Returns non-zero if we are involved in the task */
 int process_task(HostState *hs, const char *path, const FileInfo *fi, TaskInfo ti)
 {
-    if (GET_P(fi->locations) == NO_P)
-        return 0;
+    assert(GET_P(fi->locations) != NO_P);
 
     int my_st = hs->storage_target;
     if (GET_P(fi->locations) == my_st)
