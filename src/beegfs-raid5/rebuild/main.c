@@ -80,7 +80,7 @@ int do_file(const char *key, size_t keylen, const FileInfo *fi)
 #if 0
 #define FIRST_8_BITS(x)     ((x) & 0x80 ? 1 : 0), ((x) & 0x40 ? 1 : 0), \
       ((x) & 0x20 ? 1 : 0), ((x) & 0x10 ? 1 : 0), ((x) & 0x08 ? 1 : 0), \
-      ((x) & 0x04 ? 1 : 0), ((x) & 0x02 ? 1 : 0), ((x) & 0x01 ? 1 : 0) 
+      ((x) & 0x04 ? 1 : 0), ((x) & 0x02 ? 1 : 0), ((x) & 0x01 ? 1 : 0)
     int locs = mod_fi.locations & 0xFF;
     int cP = GET_P(mod_fi.locations);
     if (rank2st[mpi_rank] == rebuild_target)
@@ -205,7 +205,7 @@ int main(int argc, char **argv)
         hs.corrupt_files_fd = open(corrupt_list_file, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
 
     hs.fd_null = open("/dev/null", O_WRONLY);
-    hs.fd_zero = open("/dev/zero", O_WRONLY);
+    hs.fd_zero = open("/dev/zero", O_RDONLY);
 
     PROF_START(main_work);
 

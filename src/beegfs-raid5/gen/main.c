@@ -490,7 +490,7 @@ int main(int argc, char **argv)
     hs.storage_target = my_st;
     hs.sample = &pr_sample;
     hs.fd_null = open("/dev/null", O_WRONLY);
-    hs.fd_zero = open("/dev/zero", O_WRONLY);
+    hs.fd_zero = open("/dev/zero", O_RDONLY);
 
     for (int i = 1; i < mpi_bcast_size; i++)
     {
