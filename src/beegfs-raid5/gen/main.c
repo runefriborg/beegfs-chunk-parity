@@ -350,7 +350,7 @@ int main(int argc, char **argv)
         feeder_ranks[i] = 2 + 2*i;
     }
 
-    /* 
+    /*
      * When the feeders are done they have nothing else to do.
      * Broadcasts would still transfer data to them, so we create a group
      * without the feeders.
@@ -526,10 +526,10 @@ int main(int argc, char **argv)
             fih_term(file_info_hash);
             file_info_hash = NULL;
         }
-        MPI_Bcast(&nitems, sizeof(nitems), MPI_BYTE, i, comm);
+        MPI_Bcast(&nitems,       sizeof(nitems),          MPI_BYTE, i, comm);
         MPI_Bcast(worklist_info, sizeof(FileInfo)*nitems, MPI_BYTE, i, comm);
-        MPI_Bcast(&path_bytes, sizeof(path_bytes), MPI_BYTE, i, comm);
-        MPI_Bcast(worklist_keys, path_bytes, MPI_BYTE, i, comm);
+        MPI_Bcast(&path_bytes,   sizeof(path_bytes),      MPI_BYTE, i, comm);
+        MPI_Bcast(worklist_keys, path_bytes,              MPI_BYTE, i, comm);
 
         if (nitems == 0)
             continue;
