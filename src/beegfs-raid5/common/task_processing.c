@@ -298,11 +298,11 @@ void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, HostState
 int process_task(HostState *hs, const char *path, const FileInfo *fi, TaskInfo ti)
 {
     assert(GET_P(fi->locations) != NO_P);
+    assert(hs->storage_target >= 0);
 
-    int my_st = hs->storage_target;
-    if (GET_P(fi->locations) == my_st)
+    if (GET_P(fi->locations) == hs->storage_target)
         parity_generator(path, fi, ti, hs);
-    else if (my_st >= 0 && TEST_BIT(fi->locations, my_st))
+    else if (TEST_BIT(fi->locations, hs->storage_target))
         chunk_sender(path, fi, ti, hs);
     else
         return 0;
