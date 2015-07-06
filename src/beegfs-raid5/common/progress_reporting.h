@@ -23,7 +23,7 @@ typedef struct {
 
 typedef struct {
     MPI_Request request;
-    ProgressSample sample_bufer;
+    ProgressSample sample_buffer;
     int needs_wait;
     int host_rank;
 } ProgressSender;

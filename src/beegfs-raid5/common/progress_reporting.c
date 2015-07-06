@@ -31,9 +31,9 @@ void pr_report_progress(ProgressSender *s, ProgressSample sample)
         s->needs_wait = 0;
     }
 
-    s->sample_bufer = sample;
+    s->sample_buffer = sample;
     MPI_Isend(
-            &s->sample_bufer,
+            &s->sample_buffer,
             sizeof(ProgressSample),
             MPI_BYTE,
             s->host_rank,
