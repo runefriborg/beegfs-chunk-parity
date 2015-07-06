@@ -22,13 +22,13 @@
 extern int st2rank[MAX_STORAGE_TARGETS];
 
 /* Replicates a mkdir -p/--parents command for the dir the filename is in */
-static void mkdir_for_file(const char *filename) {
+static void mkdir_for_file(int wdir, const char *filename) {
     char tmp[256];
     strncpy(tmp, filename, sizeof(tmp));
     for(char *p = tmp + 1; *p; p++) {
         if(*p == '/') {
             *p = 0;
-            mkdir(tmp, S_IRWXU);
+            mkdirat(wdir, tmp, S_IRWXU);
             *p = '/';
         }
     }
@@ -47,17 +47,6 @@ void recv_sync_message_from(int sending_rank, int size, void *dst)
 }
 
 static
-void path_with_subst(char *res, size_t len, const char *path, const char *pat)
-{
-    size_t i = 0;
-    for (; pat[i] != '\0'; i++)
-        res[i] = (pat[i] == ' '? path[i] : pat[i]);
-    for (; path[i] != '\0' && i < len; i++)
-        res[i] = path[i];
-    res[i] = '\0';
-}
-
-static
 void push_corrupt_path(HostState *hs, const char *path)
 {
     write(hs->corrupt_files_fd, path, strlen(path));
@@ -66,25 +55,21 @@ void push_corrupt_path(HostState *hs, const char *path)
 }
 
 static
-int open_fileid_readonly(const char *id, const char *load_pat)
+int open_fileid_readonly(int rdir, const char *id)
 {
-    char tmp[256];
-    path_with_subst(tmp, strlen(id), id, load_pat);
-    int fd = open(tmp, O_RDONLY);
+    int fd = openat(rdir, id, O_RDONLY);
     if (fd <= 0)
-        printf("opened '%s' with error = '%s'\n", tmp, strerror(errno));
+        printf("opened '%s' with error = '%s'\n", id, strerror(errno));
     if (fd > 0)
         posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_WILLNEED);
     return fd;
 }
 
 static
-int open_fileid_new_parity(const char *id, ssize_t expected_size, const char *save_pat)
+int open_fileid_new_parity(int wdir, const char *id, ssize_t expected_size)
 {
-    char tmp[256];
-    path_with_subst(tmp, strlen(id), id, save_pat);
-    mkdir_for_file(tmp);
-    int fd = creat(tmp, S_IRUSR | S_IWUSR);
+    mkdir_for_file(wdir, id);
+    int fd = openat(wdir, id, O_CREAT|O_WRONLY|O_TRUNC, S_IRUSR|S_IWUSR);
     if (fd > 0)
         posix_fallocate(fd, 0, expected_size);
     return fd;
@@ -111,7 +96,7 @@ void xor_parity(uint8_t *restrict dst, size_t nbytes, const uint8_t *data, int n
     memcpy(dst, data, nbytes);
     for (int j = 1; j < nsources; j++)
     {
-        const uint8_t *src = data + j*nbytes; 
+        const uint8_t *src = data + j*nbytes;
         size_t i = 0;
         for (; i + 8 < nbytes; i += 8)
             *(uint64_t *)(dst + i) ^= *(uint64_t *)(src + i);
@@ -151,9 +136,7 @@ void parity_generator(const char *path, const FileInfo *task, TaskInfo ti, HostS
 
     /* If no one has a chunk, it is safe to delete the parity data */
     if (active_source_ranks == 0) {
-        char tmp[256];
-        path_with_subst(tmp, strlen(path), path, ti.save_pat);
-        unlink(tmp);
+        unlinkat(hs->write_dir, path, 0);
         return;
     }
 
@@ -196,7 +179,7 @@ void parity_generator(const char *path, const FileInfo *task, TaskInfo ti, HostS
     int P_fd = hs->fd_null;
     int have_had_error = hs->error;
     if (have_had_error == 0) {
-        P_fd = open_fileid_new_parity(path, max_cs + active_source_ranks*8, ti.save_pat);
+        P_fd = open_fileid_new_parity(hs->write_dir, path, max_cs + active_source_ranks*8);
         have_had_error = (P_fd <= 0) ? errno : 0;
     }
 
@@ -251,7 +234,7 @@ void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, HostState
     int ntargets = active_ranks(task->locations);
     uint64_t fd_size = 0;
     int have_had_error = hs->error;
-    int fd = open_fileid_readonly(path, ti.load_pat);
+    int fd = open_fileid_readonly(ti.read_dir, path);
     if (have_had_error || fd <= 0) {
         have_had_error = errno;
         fd = hs->fd_zero;

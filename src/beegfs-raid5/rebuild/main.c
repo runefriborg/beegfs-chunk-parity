@@ -58,24 +58,15 @@ int do_file(const char *key, size_t keylen, const FileInfo *fi)
         MPI_Ssend((void*)fi, sizeof(FileInfo), MPI_BYTE, st2rank[rebuild_target], 0, MPI_COMM_WORLD);
         MPI_Ssend((void*)key, keylen, MPI_BYTE, st2rank[rebuild_target], 0, MPI_COMM_WORLD);
     }
-    /* The rank that holds the P block needs read from parity in stead of
-     * chunks, and the rebuild target has to write to chunks rather than
-     * parity. If the rebuild target had the original P block, we don't want to
-     * switch - we just want to recalculate it. */
-    const char *load_pat = "         chunks";
-    const char *save_pat = "         parity";
-    if ((P != rebuild_target) && (P == my_st || rebuild_target == my_st)) {
-        const char *tmp = load_pat;
-        load_pat = save_pat;
-        save_pat = tmp;
-    }
     FileInfo mod_fi = *fi;
     if (P != rebuild_target) {
         mod_fi.locations |= (1 << P);
         mod_fi.locations &= ~(1 << rebuild_target);
         mod_fi.locations = WITH_P(mod_fi.locations, (uint64_t)rebuild_target);
     }
-    TaskInfo ti = { load_pat, save_pat, (P != rebuild_target), P };
+    /* The rank that holds the P block reads from parity and not chunks */
+    int rdir = (P == my_st)? hs.read_parity_dir : hs.read_chunk_dir;
+    TaskInfo ti = { rdir, 1, P };
     int report = process_task(&hs, key, &mod_fi, ti);
 #if 0
 #define FIRST_8_BITS(x)     ((x) & 0x80 ? 1 : 0), ((x) & 0x40 ? 1 : 0), \
@@ -133,6 +124,8 @@ int main(int argc, char **argv)
     if (helper == rebuild_target)
         return 1;
 
+    int store_fd = open(store_dir, O_DIRECTORY | O_RDONLY);
+
     PROF_START(total);
     PROF_START(init);
 
@@ -149,12 +142,10 @@ int main(int argc, char **argv)
     Target targetID = {0,0};
     if (mpi_rank != 0)
     {
-        int store_fd = open(store_dir, O_DIRECTORY | O_RDONLY);
         int target_ID_fd = openat(store_fd, "targetNumID", O_RDONLY);
         char targetID_s[20] = {0};
         read(target_ID_fd, targetID_s, sizeof(targetID_s));
         close(target_ID_fd);
-        close(store_fd);
         targetID.id = atoi(targetID_s);
         targetID.rank = mpi_rank;
     }
@@ -206,6 +197,10 @@ int main(int argc, char **argv)
 
     hs.fd_null = open("/dev/null", O_WRONLY);
     hs.fd_zero = open("/dev/zero", O_RDONLY);
+    hs.write_dir = openat(store_fd, "chunks", O_DIRECTORY | O_RDONLY);
+    hs.read_chunk_dir = hs.write_dir;
+    hs.read_parity_dir = openat(store_fd, "parity", O_DIRECTORY | O_RDONLY);
+    close(store_fd);
 
     PROF_START(main_work);
 

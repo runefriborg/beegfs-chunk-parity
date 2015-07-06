@@ -20,8 +20,7 @@ typedef struct {
 } FileInfo;
 
 typedef struct {
-    const char *load_pat;
-    const char *save_pat;
+    int read_dir;
     int is_rebuilding;
     int actual_P_st; /* <- Only valid when rebuilding */
 } TaskInfo;

@@ -12,6 +12,9 @@ typedef struct {
     const char *error_path;
     int fd_null;
     int fd_zero;
+    int write_dir;
+    int read_chunk_dir;
+    int read_parity_dir;
 } HostState;
 
 int process_task(

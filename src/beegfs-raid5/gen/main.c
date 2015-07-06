@@ -276,6 +276,8 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    int store_fd = open(store_dir, O_DIRECTORY | O_RDONLY);
+
     PROF_START(init);
 
     int last_run_fd = -1;
@@ -291,12 +293,10 @@ int main(int argc, char **argv)
     Target targetID = {0,0};
     if (mpi_rank != 0)
     {
-        int store_fd = open(store_dir, O_DIRECTORY | O_RDONLY);
         int target_ID_fd = openat(store_fd, "targetNumID", O_RDONLY);
         char targetID_s[20] = {0};
         read(target_ID_fd, targetID_s, sizeof(targetID_s));
         close(target_ID_fd);
-        close(store_fd);
         targetID.id = atoi(targetID_s);
         targetID.rank = mpi_rank;
     }
@@ -491,6 +491,10 @@ int main(int argc, char **argv)
     hs.sample = &pr_sample;
     hs.fd_null = open("/dev/null", O_WRONLY);
     hs.fd_zero = open("/dev/zero", O_RDONLY);
+    hs.write_dir = openat(store_fd, "parity", O_DIRECTORY | O_RDONLY);
+    hs.read_chunk_dir = openat(store_fd, "chunks", O_DIRECTORY | O_RDONLY);
+    hs.read_parity_dir = -1; /* We only write to parity, no reading */
+    close(store_fd);
 
     for (int i = 1; i < mpi_bcast_size; i++)
     {
@@ -541,7 +545,7 @@ int main(int argc, char **argv)
             continue;
         }
 
-        TaskInfo ti = { "", "         parity", 0, -1 };
+        TaskInfo ti = { hs.read_chunk_dir, 0, -1 };
         size_t j = 0;
         const char *s = worklist_keys;
         while (j < nitems)
