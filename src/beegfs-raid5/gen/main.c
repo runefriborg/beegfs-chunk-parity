@@ -113,6 +113,23 @@ typedef struct {
     char path[];
 } packed_file_info;
 
+typedef struct {
+    uint64_t size;
+    uint64_t idx;
+} SizeIndex;
+
+static
+int cmp_entries(const void *pa, const void *pb)
+{
+    uint64_t a = ((SizeIndex *)pa)->size;
+    uint64_t b = ((SizeIndex *)pb)->size;
+    if (a < b)
+        return -1;
+    if (a == b)
+        return 0;
+    return 1;
+}
+
 static ssize_t  dst_written[MAX_TARGETS] = {0};
 static ssize_t  dst_in_transit[MAX_TARGETS] = {0};
 static MPI_Request async_send_req[MAX_TARGETS] = {0};
@@ -379,6 +396,10 @@ int main(int argc, char **argv)
     size_t name_bytes_written = 0;
     const size_t name_bytes_limit = MAX_WORKITEMS*100;
     char *flat_file_names = malloc(name_bytes_limit);
+    char **names = malloc(MAX_WORKITEMS*sizeof(char*));
+    FatFileInfo *file_info = malloc(MAX_WORKITEMS*sizeof(FatFileInfo));
+    SizeIndex *received_entries = malloc(MAX_WORKITEMS*sizeof(SizeIndex));
+    size_t items_received = 0;
 
     /*
      * In phase 1 we have 3 kinds of processes:
@@ -454,14 +475,28 @@ int main(int argc, char **argv)
                 memmove(n, pfi->path, pfi->path_len);
                 n[pfi->path_len] = '\0';
                 name_bytes_written += pfi->path_len + 1;
-                if (fih_add_info(file_info_hash,
-                        n,
+                size_t idx;
+                if (fih_get_or_create(file_info_hash, n, &idx) == FIH_NEW) {
+                    memset(&file_info[idx], 0, sizeof(FatFileInfo));
+                    received_entries[idx].size = 0;
+                    received_entries[idx].idx = idx;
+                    names[idx] = n;
+                    items_received += 1;
+                    if (items_received >= MAX_WORKITEMS)
+                        errx(1, "Too many chunks (max = %llu)", MAX_WORKITEMS);
+                }
+                else
+                    name_bytes_written -= pfi->path_len + 1;
+                received_entries[idx].size += pfi->chunk_size;
+                fih_add_info(
+                        &file_info[idx],
                         st_from_feeder_rank(src),
                         pfi->timestamp,
-                        (pfi->event_type == UNLINK_EVENT)))
-                    name_bytes_written -= pfi->path_len + 1;
+                        (pfi->event_type == UNLINK_EVENT));
             }
         }
+        fih_term(file_info_hash);
+        file_info_hash = NULL;
     }
 
     if (p1_feeder) {
@@ -470,6 +505,13 @@ int main(int argc, char **argv)
     }
 
     PROF_END(phase1);
+
+    PROF_START(sort_by_size);
+    MPI_Barrier(comm);
+    assert(items_received < MAX_WORKITEMS);
+    qsort(received_entries, items_received, sizeof(SizeIndex), cmp_entries);
+    MPI_Barrier(comm);
+    PROF_END(sort_by_size);
 
     PROF_START(load_db);
     PersistentDB *pdb = pdb_init(db_folder);
@@ -502,7 +544,7 @@ int main(int argc, char **argv)
 
     for (int i = 1; i < mpi_bcast_size; i++)
     {
-        size_t nitems = 0;
+        size_t nitems = items_received;
         size_t path_bytes = 0;
         if (mpi_bcast_rank == i)
         {
@@ -510,14 +552,13 @@ int main(int argc, char **argv)
              * Collect all file info entries in to a packed array that is ready for
              * broadcasting.
              * */
-            const char *s = flat_file_names;
-            while (s < flat_file_names + name_bytes_written && *s != '\0')
+            for (size_t j = 0; j < nitems; j++)
             {
+                const char *s = names[received_entries[j].idx];
                 size_t s_len = strlen(s);
                 FileInfo prev_fi;
-                FatFileInfo new_fi;
-                FileInfo *fi = worklist_info + nitems;
-                fih_get(file_info_hash, s, &new_fi);
+                FatFileInfo new_fi = file_info[received_entries[j].idx];
+                FileInfo *fi = worklist_info + j;
                 fi->timestamp = new_fi.timestamp;
                 fi->locations = WITH_P(new_fi.modified, NO_P);
                 int has_an_old_version = pdb_get(pdb, s, s_len, &prev_fi);
@@ -526,15 +567,10 @@ int main(int argc, char **argv)
                 fi->locations &= ~new_fi.deleted;
                 if (GET_P(fi->locations) == NO_P)
                     select_P(s, fi, (unsigned)ntargets);
-                s += s_len + 1;
-                nitems += 1;
-                if (nitems >= MAX_WORKITEMS)
-                    errx(1, "Too many chunks (max = %llu)", MAX_WORKITEMS);
+                memcpy(worklist_keys + path_bytes, s, s_len + 1);
+                path_bytes += s_len + 1;
             }
-            path_bytes = name_bytes_written;
-            memcpy(worklist_keys, flat_file_names, path_bytes);
-            fih_term(file_info_hash);
-            file_info_hash = NULL;
+            assert(path_bytes == name_bytes_written);
         }
         MPI_Bcast(&nitems,       sizeof(nitems),          MPI_BYTE, i, comm);
         MPI_Bcast(worklist_info, sizeof(FileInfo)*nitems, MPI_BYTE, i, comm);
@@ -606,11 +642,12 @@ int main(int argc, char **argv)
 
     if (mpi_rank == 0) {
         printf("Overall timings: \n");
-        printf("init    | %9.2f ms\n", 1e3*PROF_VAL(init));
-        printf("phase1  | %9.2f ms\n", 1e3*PROF_VAL(phase1));
-        printf("load_db | %9.2f ms\n", 1e3*PROF_VAL(load_db));
-        printf("phase2  | %9.2f ms\n", 1e3*PROF_VAL(phase2));
-        printf("total   | %9.2f ms\n", 1e3*PROF_VAL(total));
+        printf("init         | %9.2f ms\n", 1e3*PROF_VAL(init));
+        printf("phase1       | %9.2f ms\n", 1e3*PROF_VAL(phase1));
+        printf("sort_by_size | %9.2f ms\n", 1e3*PROF_VAL(sort_by_size));
+        printf("load_db      | %9.2f ms\n", 1e3*PROF_VAL(load_db));
+        printf("phase2       | %9.2f ms\n", 1e3*PROF_VAL(phase2));
+        printf("total        | %9.2f ms\n", 1e3*PROF_VAL(total));
     }
 
     MPI_Finalize();

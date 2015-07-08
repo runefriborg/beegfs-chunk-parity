@@ -1,9 +1,7 @@
-#include <stdint.h>
-
 #include "file_info_hash.h"
 
 #include "khash.h"
-KHASH_MAP_INIT_STR(fih, FatFileInfo)
+KHASH_MAP_INIT_STR(fih, size_t)
 
 struct FileInfoHash {
     khash_t(fih) *h;
@@ -23,31 +21,28 @@ void fih_term(FileInfoHash *fih)
     free(fih);
 }
 
-int fih_add_info(FileInfoHash *fih, char *key, int src, int64_t time, int rm)
+void fih_add_info(FatFileInfo *fi, int src, int64_t time, int rm)
 {
-    khash_t(fih) *h = fih->h;
-    int r;
-    khint_t it = kh_put_fih(h, key, &r);
-    FatFileInfo *fi = &kh_val(h, it);
-    if (r == 1)
-        memset(fi, 0, sizeof(FatFileInfo));
     fi->timestamp = MAX(fi->timestamp, time);
     if (rm)
         fi->deleted |= (1ULL << src);
     else
         fi->modified |= (1ULL << src);
-    return (r == 0);
 }
 
-int fih_get(const FileInfoHash *fih, const char *key, FatFileInfo *val)
+int fih_get_or_create(const FileInfoHash *fih, const char *key, size_t *val)
 {
     khash_t(fih) *h = fih->h;
     khint_t it = kh_get(fih, h, key);
     if (it != kh_end(h))
     {
         *val = kh_val(h, it);
-        return 1;
+        return FIH_OLD;
     }
-    return 0;
+    *val = kh_size(h);
+    int r;
+    it = kh_put_fih(h, key, &r);
+    kh_val(h, it) = *val;
+    return FIH_NEW;
 }
 
