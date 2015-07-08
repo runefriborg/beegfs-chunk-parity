@@ -88,7 +88,7 @@ if flock --exclusive --nonblock 500; then
     # We need two ranks per host so we double it up
     paste -d '\n' "/opt/$dname/etc/hosts" "/opt/$dname/etc/hosts" >> "/opt/$dname/run/hosts"
     mpirun="mpirun --hostfile /opt/$dname/run/hosts"
-    $mpirun ./bp-parity-gen $operation $base_dir $last_timestamp $timestamp /opt/$dname/spool/data /tmp/$base_dir.db
+    $mpirun ./bp-parity-gen $operation $base_dir $last_timestamp $timestamp /opt/$dname/spool/data /opt/$dname/spool/db
 
     echo $timestamp > $last_successful_timestamp_file
 else
