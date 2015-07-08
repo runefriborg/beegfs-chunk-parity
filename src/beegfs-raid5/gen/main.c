@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <err.h>
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -444,7 +445,7 @@ int main(int argc, char **argv)
                 packed_file_info *pfi = (packed_file_info *)(recv_buffer+i);
                 i += sizeof(packed_file_info) + pfi->path_len;
                 if (name_bytes_written + pfi->path_len + 1 >= name_bytes_limit)
-                    errx(1, "Only room for %llu bytes of paths. Asked for %llu.",
+                    errx(1, "Only room for %zu bytes of paths. Asked for %lu.",
                             name_bytes_limit, name_bytes_written + pfi->path_len + 1);
                 char *n = flat_file_names + name_bytes_written;
                 memmove(n, pfi->path, pfi->path_len);
