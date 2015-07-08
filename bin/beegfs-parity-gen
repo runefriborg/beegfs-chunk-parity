@@ -4,9 +4,8 @@ set -o pipefail
 set -o errexit
 
 arg1="${1:-}"
-dname="beegfs-parity"
+dname="beegfs-parity-store01"
 last_successful_timestamp_file="/opt/$dname/spool/last-gen-timestamp"
-groups="store01"
 
 function usage {
 echo "usage: beegfs-parity-gen --complete|--partial"
@@ -45,7 +44,7 @@ mkdir --parents "/opt/$dname/etc"
 
 function check_beegfs_servers_online {
 #TODO: any other ways the servers can be down?
-if fhgfs-check-servers | grep -q "UNREACHABLE\|failed"; then
+if beegfs-check-servers | grep -q "UNREACHABLE\|failed"; then
     return 1
 fi
 return 0
@@ -83,14 +82,13 @@ if flock --exclusive --nonblock 500; then
         # Tell everyone to delete all old chunks and dbs
     fi
 
-    for group in $groups; do
-        mkdir --parents "/opt/$dname/spool/$group"
-        echo `hostname -s` > /opt/$dname/run/hosts
-        # We need two ranks per host so we double it up
-        paste -d '\n' "/opt/$dname/etc/$group.hosts" "/opt/$dname/etc/$group.hosts" >> "/opt/$dname/run/hosts"
-        mpirun="mpirun --hostfile /opt/$dname/run/hosts"
-        $mpirun ./bp-parity-gen $operation /$group $last_timestamp $timestamp /opt/$dname/spool/$group/data
-    done
+    base_dir=`cat /opt/$dname/etc/basedir`
+    mkdir --parents "/opt/$dname/spool"
+    echo `hostname -s` > /opt/$dname/run/hosts
+    # We need two ranks per host so we double it up
+    paste -d '\n' "/opt/$dname/etc/hosts" "/opt/$dname/etc/hosts" >> "/opt/$dname/run/hosts"
+    mpirun="mpirun --hostfile /opt/$dname/run/hosts"
+    $mpirun ./bp-parity-gen $operation $base_dir $last_timestamp $timestamp /opt/$dname/spool/data /tmp/$base_dir.db
 
     echo $timestamp > $last_successful_timestamp_file
 else

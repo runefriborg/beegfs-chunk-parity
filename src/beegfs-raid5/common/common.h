@@ -3,6 +3,9 @@
 
 #include <stdint.h>
 
+#define MODIFY_EVENT 'm'
+#define UNLINK_EVENT 'd'
+
 #define MAX_STORAGE_TARGETS 56
 #define TEST_BIT(x,i) ((x) & (1ULL << (i)))
 #define GET_P(loc) ((int)((loc) >> 56))
@@ -12,13 +15,12 @@
 #define NO_P UINT64_C(0xFF)
 
 typedef struct {
-    uint64_t timestamp;
+    int64_t timestamp;
     uint64_t locations;
 } FileInfo;
 
 typedef struct {
-    const char *load_pat;
-    const char *save_pat;
+    int read_dir;
     int is_rebuilding;
     int actual_P_st; /* <- Only valid when rebuilding */
 } TaskInfo;

@@ -4,9 +4,8 @@ set -o pipefail
 set -o errexit
 
 arg1="${1:-}"
-dname="beegfs-parity"
+dname="beegfs-parity-store01"
 last_successful_timestamp_file="/opt/$dname/spool/last-gen-timestamp"
-groups="store01"
 
 function usage {
 echo "usage: beegfs-parity-rebuild"
@@ -49,13 +48,17 @@ if flock --exclusive --nonblock 500; then
     # TODO: Auto discover which node is down, or take as param.
     rebuild_target="3"
 
-    for group in $groups; do
-        mkdir --parents "/opt/$dname/spool/$group"
-        echo `hostname -s` > /opt/$dname/run/hosts
-        cat "/opt/$dname/etc/$group.hosts" >> "/opt/$dname/run/hosts"
-        mpirun="mpirun --hostfile /opt/$dname/run/hosts"
-        $mpirun ./bp-parity-rebuild $rebuild_target /$group /opt/$dname/spool/$group/data
-    done
+    base_dir=`cat /opt/$dname/etc/basedir`
+    spool="/opt/$dname/spool/"
+    mkdir --parents $spool
+    echo `hostname -s` > /opt/$dname/run/hosts
+    cat "/opt/$dname/etc/hosts" >> "/opt/$dname/run/hosts"
+    mpirun="mpirun --hostfile /opt/$dname/run/hosts"
+    $mpirun ./bp-parity-rebuild $rebuild_target $base_dir $spool/data /tmp/$base_dir-corrupted_chunks /tmp/$base_dir.db
+    # Collect list of potentially corrupt chunks
+    for h in `cat /opt/$dname/etc/hosts`; do
+        ssh $h cat /tmp/$base_dir-corrupted_chunks
+    done | sort -u > $spool/corrupted_chunks
 else
     echo "** Error: Can't acquire lock, is the program already running?" 1>&2
 fi

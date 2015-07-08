@@ -105,8 +105,9 @@ choose_P_again:
 }
 
 typedef struct {
-    uint64_t timestamp;
+    int64_t timestamp;
     uint64_t path_len;
+    uint64_t event_type;
     char path[];
 } packed_file_info;
 
@@ -158,7 +159,7 @@ void begin_async_send(int target)
 }
 
 static
-void push_to_target(int target, const char *path, int path_len, uint64_t timestamp)
+void push_to_target(int target, const char *path, int path_len, int64_t timestamp, uint8_t event_type)
 {
     assert(0 <= target && target < MAX_TARGETS);
     assert(path != NULL);
@@ -177,7 +178,7 @@ void push_to_target(int target, const char *path, int path_len, uint64_t timesta
         finish_prev_async_send(target);
     }
 
-    packed_file_info finfo = {timestamp, path_len};
+    packed_file_info finfo = {timestamp, path_len, event_type};
     uint8_t *dst = dst_buffer[target] + written;
     memcpy(dst, &finfo, sizeof(packed_file_info));
     memcpy(dst + sizeof(packed_file_info), path, path_len);
@@ -217,26 +218,28 @@ void feed_targets_with(FILE *input_file, unsigned ntargets)
     {
         size_t buf_alive = buf_offset + read;
         const char *bufp = buf;
-        while (buf_alive >= 2*sizeof(uint64_t)) {
-            uint64_t timestamp_secs = ((uint64_t *)bufp)[0];
-            uint64_t len_of_path = ((uint64_t *)bufp)[1];
-            if (2*sizeof(uint64_t) + len_of_path + 1 > buf_alive) {
+        while (buf_alive >= 3*sizeof(uint64_t)) {
+            int64_t timestamp_secs = ((int64_t *)bufp)[0];
+            uint64_t event_type = ((uint64_t *)bufp)[1];
+            uint64_t len_of_path = ((uint64_t *)bufp)[2];
+            if (3*sizeof(uint64_t) + len_of_path > buf_alive) {
                 buf_offset = buf_alive;
                 memmove(buf, bufp, buf_alive);
                 break;
             }
-            const char *path = bufp + 2*sizeof(uint64_t);
+            const char *path = bufp + 3*sizeof(uint64_t);
             unsigned st = (simple_hash(path, len_of_path)) % ntargets;
             push_to_target(
                     st,
                     path,
                     len_of_path,
-                    timestamp_secs);
+                    timestamp_secs,
+                    event_type);
             counter += 1;
-            bufp += len_of_path + 2*sizeof(uint64_t) + 1;
-            buf_alive -= len_of_path + 2*sizeof(uint64_t) + 1;
+            bufp += len_of_path + 3*sizeof(uint64_t);
+            buf_alive -= len_of_path + 3*sizeof(uint64_t);
         }
-        if (2*sizeof(uint64_t) >= buf_alive) {
+        if (3*sizeof(uint64_t) >= buf_alive) {
             buf_offset = buf_alive;
             memmove(buf, bufp, buf_alive);
         }
@@ -249,8 +252,8 @@ void feed_targets_with(FILE *input_file, unsigned ntargets)
 
 int main(int argc, char **argv)
 {
-    if (argc != 6) {
-        fputs("We need 5 arguments\n", stdout);
+    if (argc != 7) {
+        fputs("We need 6 arguments\n", stdout);
         return 1;
     }
 
@@ -259,6 +262,7 @@ int main(int argc, char **argv)
     const char *timestamp_a = argv[3];
     const char *timestamp_b = argv[4];
     const char *data_file = argv[5];
+    const char *db_folder = argv[6];
 
     PROF_START(total);
 
@@ -271,6 +275,8 @@ int main(int argc, char **argv)
     if (ntargets > MAX_TARGETS) {
         return 1;
     }
+
+    int store_fd = open(store_dir, O_DIRECTORY | O_RDONLY);
 
     PROF_START(init);
 
@@ -287,12 +293,10 @@ int main(int argc, char **argv)
     Target targetID = {0,0};
     if (mpi_rank != 0)
     {
-        int store_fd = open(store_dir, O_DIRECTORY | O_RDONLY);
         int target_ID_fd = openat(store_fd, "targetNumID", O_RDONLY);
         char targetID_s[20] = {0};
         read(target_ID_fd, targetID_s, sizeof(targetID_s));
         close(target_ID_fd);
-        close(store_fd);
         targetID.id = atoi(targetID_s);
         targetID.rank = mpi_rank;
     }
@@ -346,7 +350,7 @@ int main(int argc, char **argv)
         feeder_ranks[i] = 2 + 2*i;
     }
 
-    /* 
+    /*
      * When the feeders are done they have nothing else to do.
      * Broadcasts would still transfer data to them, so we create a group
      * without the feeders.
@@ -415,7 +419,7 @@ int main(int argc, char **argv)
         if (strcmp(operation, "complete") == 0)
             snprintf(cmd_buf, sizeof(cmd_buf), "bp-find-all-chunks %s/chunks", store_dir);
         else if (strcmp(operation, "partial") == 0)
-            snprintf(cmd_buf, sizeof(cmd_buf), "audit-find-between %s %s %s/chunks", timestamp_a, timestamp_b, store_dir);
+            snprintf(cmd_buf, sizeof(cmd_buf), "audit-find-between --from %s --to %s --store %s/chunks", timestamp_a, timestamp_b, store_dir);
         else
             strcpy(cmd_buf, "cat /dev/null");
         slave = popen(cmd_buf, "r");
@@ -440,8 +444,8 @@ int main(int argc, char **argv)
                 packed_file_info *pfi = (packed_file_info *)(recv_buffer+i);
                 i += sizeof(packed_file_info) + pfi->path_len;
                 if (name_bytes_written + pfi->path_len + 1 >= name_bytes_limit)
-                    continue;
-                /*printf("%d - received '%.*s' from %d\n", mpi_rank, (uint32_t)(pfi->path_len), pfi->path, src);*/
+                    errx(1, "Only room for %llu bytes of paths. Asked for %llu.",
+                            name_bytes_limit, name_bytes_written + pfi->path_len + 1);
                 char *n = flat_file_names + name_bytes_written;
                 memmove(n, pfi->path, pfi->path_len);
                 n[pfi->path_len] = '\0';
@@ -449,7 +453,8 @@ int main(int argc, char **argv)
                 if (fih_add_info(file_info_hash,
                         n,
                         st_from_feeder_rank(src),
-                        pfi->timestamp))
+                        pfi->timestamp,
+                        (pfi->event_type == UNLINK_EVENT)))
                     name_bytes_written -= pfi->path_len + 1;
             }
         }
@@ -463,7 +468,7 @@ int main(int argc, char **argv)
     PROF_END(phase1);
 
     PROF_START(load_db);
-    PersistentDB *pdb = pdb_init();
+    PersistentDB *pdb = pdb_init(db_folder);
     PROF_END(load_db);
 
     PROF_START(phase2);
@@ -480,6 +485,16 @@ int main(int argc, char **argv)
     ProgressSender pr_sender;
     memset(&pr_sender, 0, sizeof(pr_sender));
     ProgressSample pr_sample = PROGRESS_SAMPLE_INIT;
+    HostState hs;
+    memset(&hs, 0, sizeof(hs));
+    hs.storage_target = my_st;
+    hs.sample = &pr_sample;
+    hs.fd_null = open("/dev/null", O_WRONLY);
+    hs.fd_zero = open("/dev/zero", O_RDONLY);
+    hs.write_dir = openat(store_fd, "parity", O_DIRECTORY | O_RDONLY);
+    hs.read_chunk_dir = openat(store_fd, "chunks", O_DIRECTORY | O_RDONLY);
+    hs.read_parity_dir = -1; /* We only write to parity, no reading */
+    close(store_fd);
 
     for (int i = 1; i < mpi_bcast_size; i++)
     {
@@ -496,25 +511,31 @@ int main(int argc, char **argv)
             {
                 size_t s_len = strlen(s);
                 FileInfo prev_fi;
-                int has_an_old_version = pdb_get(pdb, s, s_len, &prev_fi);
+                FatFileInfo new_fi;
                 FileInfo *fi = worklist_info + nitems;
-                fih_get(file_info_hash, s, fi);
+                fih_get(file_info_hash, s, &new_fi);
+                fi->timestamp = new_fi.timestamp;
+                fi->locations = WITH_P(new_fi.modified, NO_P);
+                int has_an_old_version = pdb_get(pdb, s, s_len, &prev_fi);
                 if (has_an_old_version)
                     fill_in_missing_fields(fi, &prev_fi);
+                fi->locations &= ~new_fi.deleted;
                 if (GET_P(fi->locations) == NO_P)
                     select_P(s, fi, (unsigned)ntargets);
                 s += s_len + 1;
                 nitems += 1;
+                if (nitems >= MAX_WORKITEMS)
+                    errx(1, "Too many chunks (max = %llu)", MAX_WORKITEMS);
             }
             path_bytes = name_bytes_written;
             memcpy(worklist_keys, flat_file_names, path_bytes);
             fih_term(file_info_hash);
             file_info_hash = NULL;
         }
-        MPI_Bcast(&nitems, sizeof(nitems), MPI_BYTE, i, comm);
+        MPI_Bcast(&nitems,       sizeof(nitems),          MPI_BYTE, i, comm);
         MPI_Bcast(worklist_info, sizeof(FileInfo)*nitems, MPI_BYTE, i, comm);
-        MPI_Bcast(&path_bytes, sizeof(path_bytes), MPI_BYTE, i, comm);
-        MPI_Bcast(worklist_keys, path_bytes, MPI_BYTE, i, comm);
+        MPI_Bcast(&path_bytes,   sizeof(path_bytes),      MPI_BYTE, i, comm);
+        MPI_Bcast(worklist_keys, path_bytes,              MPI_BYTE, i, comm);
 
         if (nitems == 0)
             continue;
@@ -526,7 +547,7 @@ int main(int argc, char **argv)
             continue;
         }
 
-        TaskInfo ti = { "", "         parity", 0, -1 };
+        TaskInfo ti = { hs.read_chunk_dir, 0, -1 };
         size_t j = 0;
         const char *s = worklist_keys;
         while (j < nitems)
@@ -534,8 +555,11 @@ int main(int argc, char **argv)
             struct timespec tv1;
             clock_gettime(CLOCK_MONOTONIC, &tv1);
             size_t s_len = strlen(s);
-            int report = process_task(my_st, s, worklist_info + j, ti, &pr_sample);
-            pdb_set(pdb, s, s_len, worklist_info + j);
+            int report = process_task(&hs, s, worklist_info + j, ti);
+            if (worklist_info[j].locations & L_MASK)
+                pdb_set(pdb, s, s_len, worklist_info + j);
+            else
+                pdb_del(pdb, s, s_len);
             s += s_len + 1;
             j += 1;
             struct timespec tv2;
@@ -552,8 +576,19 @@ int main(int argc, char **argv)
                 pr_clear_tmp(&pr_sample);
             }
         }
+        pr_add_tmp_to_total(&pr_sample);
         pr_report_progress(&pr_sender, pr_sample);
+        pr_clear_tmp(&pr_sample);
         pr_report_done(&pr_sender);
+    }
+
+    if (hs.error != 0)
+    {
+        fprintf(stderr, "%s gave error %d (%s) on st %d\n",
+                hs.error_path,
+                hs.error,
+                strerror(hs.error),
+                rank2st[mpi_rank]);
     }
 
     pdb_term(pdb);

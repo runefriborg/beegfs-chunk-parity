@@ -35,6 +35,7 @@ int rank2st[MAX_STORAGE_TARGETS+1];
 
 static ProgressSender pr_sender;
 static ProgressSample pr_sample = PROGRESS_SAMPLE_INIT;
+static HostState hs;
 
 
 int do_file(const char *key, size_t keylen, const FileInfo *fi)
@@ -49,21 +50,13 @@ int do_file(const char *key, size_t keylen, const FileInfo *fi)
             || TEST_BIT(fi->locations, rebuild_target) == 0)
         return 0;
 
+    hs.storage_target = my_st;
+    hs.sample = &pr_sample;
+
     if (helper == my_st) {
         /* Send fi, key to rebuild_target so it knows whats up */
         MPI_Ssend((void*)fi, sizeof(FileInfo), MPI_BYTE, st2rank[rebuild_target], 0, MPI_COMM_WORLD);
         MPI_Ssend((void*)key, keylen, MPI_BYTE, st2rank[rebuild_target], 0, MPI_COMM_WORLD);
-    }
-    /* The rank that holds the P block needs read from parity in stead of
-     * chunks, and the rebuild target has to write to chunks rather than
-     * parity. If the rebuild target had the original P block, we don't want to
-     * switch - we just want to recalculate it. */
-    const char *load_pat = "         chunks";
-    const char *save_pat = "         parity";
-    if ((P != rebuild_target) && (P == my_st || rebuild_target == my_st)) {
-        const char *tmp = load_pat;
-        load_pat = save_pat;
-        save_pat = tmp;
     }
     FileInfo mod_fi = *fi;
     if (P != rebuild_target) {
@@ -71,12 +64,14 @@ int do_file(const char *key, size_t keylen, const FileInfo *fi)
         mod_fi.locations &= ~(1 << rebuild_target);
         mod_fi.locations = WITH_P(mod_fi.locations, (uint64_t)rebuild_target);
     }
-    TaskInfo ti = { load_pat, save_pat, (P != rebuild_target), P };
-    int report = process_task(my_st, key, &mod_fi, ti, &pr_sample);
+    /* The rank that holds the P block reads from parity and not chunks */
+    int rdir = (P == my_st)? hs.read_parity_dir : hs.read_chunk_dir;
+    TaskInfo ti = { rdir, 1, P };
+    int report = process_task(&hs, key, &mod_fi, ti);
 #if 0
 #define FIRST_8_BITS(x)     ((x) & 0x80 ? 1 : 0), ((x) & 0x40 ? 1 : 0), \
       ((x) & 0x20 ? 1 : 0), ((x) & 0x10 ? 1 : 0), ((x) & 0x08 ? 1 : 0), \
-      ((x) & 0x04 ? 1 : 0), ((x) & 0x02 ? 1 : 0), ((x) & 0x01 ? 1 : 0) 
+      ((x) & 0x04 ? 1 : 0), ((x) & 0x02 ? 1 : 0), ((x) & 0x01 ? 1 : 0)
     int locs = mod_fi.locations & 0xFF;
     int cP = GET_P(mod_fi.locations);
     if (rank2st[mpi_rank] == rebuild_target)
@@ -101,9 +96,9 @@ int do_file(const char *key, size_t keylen, const FileInfo *fi)
 
 int main(int argc, char **argv)
 {
-    if (argc != 4)
+    if (argc != 6)
     {
-        fputs("We need 3 arguments\n", stdout);
+        fputs("We need 5 arguments\n", stdout);
         return 1;
     }
 
@@ -114,6 +109,8 @@ int main(int argc, char **argv)
     rebuild_target = atoi(argv[1]);
     const char *store_dir = argv[2];
     const char *data_file = argv[3];
+    const char *corrupt_list_file = argv[4];
+    const char *db_folder = argv[5];
 
     int ntargets = mpi_world_size - 1;
     if (ntargets > MAX_STORAGE_TARGETS)
@@ -126,6 +123,8 @@ int main(int argc, char **argv)
         helper += 1;
     if (helper == rebuild_target)
         return 1;
+
+    int store_fd = open(store_dir, O_DIRECTORY | O_RDONLY);
 
     PROF_START(total);
     PROF_START(init);
@@ -143,12 +142,10 @@ int main(int argc, char **argv)
     Target targetID = {0,0};
     if (mpi_rank != 0)
     {
-        int store_fd = open(store_dir, O_DIRECTORY | O_RDONLY);
         int target_ID_fd = openat(store_fd, "targetNumID", O_RDONLY);
         char targetID_s[20] = {0};
         read(target_ID_fd, targetID_s, sizeof(targetID_s));
         close(target_ID_fd);
-        close(store_fd);
         targetID.id = atoi(targetID_s);
         targetID.rank = mpi_rank;
     }
@@ -195,6 +192,15 @@ int main(int argc, char **argv)
 
     if (mpi_rank == 0)
         printf("%d(rank=%d), %d(rank=%d)\n", rebuild_target, st2rank[rebuild_target], helper, st2rank[helper]);
+    else
+        hs.corrupt_files_fd = open(corrupt_list_file, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
+
+    hs.fd_null = open("/dev/null", O_WRONLY);
+    hs.fd_zero = open("/dev/zero", O_RDONLY);
+    hs.write_dir = openat(store_fd, "chunks", O_DIRECTORY | O_RDONLY);
+    hs.read_chunk_dir = hs.write_dir;
+    hs.read_parity_dir = openat(store_fd, "parity", O_DIRECTORY | O_RDONLY);
+    close(store_fd);
 
     PROF_START(main_work);
 
@@ -202,7 +208,7 @@ int main(int argc, char **argv)
 
     if (mpi_rank != 0 && rank2st[mpi_rank] != rebuild_target)
     {
-        PersistentDB *pdb = pdb_init();
+        PersistentDB *pdb = pdb_init(db_folder);
         pdb_iterate(pdb, do_file);
         pdb_term(pdb);
 
@@ -210,6 +216,7 @@ int main(int argc, char **argv)
             int dummy;
             MPI_Ssend((void*)&dummy, sizeof(dummy), MPI_BYTE, st2rank[rebuild_target], 0, MPI_COMM_WORLD);
         }
+        pr_add_tmp_to_total(&pr_sample);
         pr_report_progress(&pr_sender, pr_sample);
         pr_report_done(&pr_sender);
     }
@@ -232,6 +239,7 @@ int main(int argc, char **argv)
             MPI_Recv(&fi, sizeof(FileInfo), MPI_BYTE, helper_rank, 0, MPI_COMM_WORLD, &stat);
             MPI_Get_count(&stat, MPI_BYTE, &count);
         }
+        pr_add_tmp_to_total(&pr_sample);
         pr_report_progress(&pr_sender, pr_sample);
         pr_report_done(&pr_sender);
     }
@@ -241,14 +249,28 @@ int main(int argc, char **argv)
         pr_receive_loop(ntargets-1);
     }
 
+    if (mpi_rank != 0)
+        close(hs.corrupt_files_fd);
+
+    if (hs.error != 0)
+    {
+        fprintf(stderr, "%s gave error %d (%s) on st %d\n",
+                hs.error_path,
+                hs.error,
+                strerror(hs.error),
+                rank2st[mpi_rank]);
+    }
+
+    MPI_Barrier(MPI_COMM_WORLD);
     PROF_END(main_work);
+
     PROF_END(total);
 
     if (mpi_rank == 0) {
         printf("Overall timings: \n");
-        printf("init       | %9.2f ms\n", 1e3*PROF_VAL(init));
-        printf("main_work  | %9.2f ms\n", 1e3*PROF_VAL(main_work));
-        printf("total      | %9.2f ms\n", 1e3*PROF_VAL(total));
+        printf("init                | %9.2f ms\n", 1e3*PROF_VAL(init));
+        printf("main_work           | %9.2f ms\n", 1e3*PROF_VAL(main_work));
+        printf("total               | %9.2f ms\n", 1e3*PROF_VAL(total));
     }
 
     MPI_Finalize();
