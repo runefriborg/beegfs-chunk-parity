@@ -107,6 +107,7 @@ choose_P_again:
 
 typedef struct {
     int64_t timestamp;
+    uint64_t chunk_size;
     uint64_t path_len;
     uint64_t event_type;
     char path[];
@@ -160,7 +161,7 @@ void begin_async_send(int target)
 }
 
 static
-void push_to_target(int target, const char *path, int path_len, int64_t timestamp, uint8_t event_type)
+void push_to_target(int target, const char *path, int path_len, int64_t timestamp, uint64_t chunk_size, uint8_t event_type)
 {
     assert(0 <= target && target < MAX_TARGETS);
     assert(path != NULL);
@@ -179,7 +180,7 @@ void push_to_target(int target, const char *path, int path_len, int64_t timestam
         finish_prev_async_send(target);
     }
 
-    packed_file_info finfo = {timestamp, path_len, event_type};
+    packed_file_info finfo = {timestamp, chunk_size, path_len, event_type};
     uint8_t *dst = dst_buffer[target] + written;
     memcpy(dst, &finfo, sizeof(packed_file_info));
     memcpy(dst + sizeof(packed_file_info), path, path_len);
@@ -219,28 +220,30 @@ void feed_targets_with(FILE *input_file, unsigned ntargets)
     {
         size_t buf_alive = buf_offset + read;
         const char *bufp = buf;
-        while (buf_alive >= 3*sizeof(uint64_t)) {
+        while (buf_alive >= 4*sizeof(uint64_t)) {
             int64_t timestamp_secs = ((int64_t *)bufp)[0];
-            uint64_t event_type = ((uint64_t *)bufp)[1];
-            uint64_t len_of_path = ((uint64_t *)bufp)[2];
-            if (3*sizeof(uint64_t) + len_of_path > buf_alive) {
+            uint64_t chunk_size = ((uint64_t *)bufp)[1];
+            uint64_t event_type = ((uint64_t *)bufp)[2];
+            uint64_t len_of_path = ((uint64_t *)bufp)[3];
+            if (4*sizeof(uint64_t) + len_of_path > buf_alive) {
                 buf_offset = buf_alive;
                 memmove(buf, bufp, buf_alive);
                 break;
             }
-            const char *path = bufp + 3*sizeof(uint64_t);
+            const char *path = bufp + 4*sizeof(uint64_t);
             unsigned st = (simple_hash(path, len_of_path)) % ntargets;
             push_to_target(
                     st,
                     path,
                     len_of_path,
                     timestamp_secs,
+                    chunk_size,
                     event_type);
             counter += 1;
-            bufp += len_of_path + 3*sizeof(uint64_t);
-            buf_alive -= len_of_path + 3*sizeof(uint64_t);
+            bufp += len_of_path + 4*sizeof(uint64_t);
+            buf_alive -= len_of_path + 4*sizeof(uint64_t);
         }
-        if (3*sizeof(uint64_t) >= buf_alive) {
+        if (4*sizeof(uint64_t) >= buf_alive) {
             buf_offset = buf_alive;
             memmove(buf, bufp, buf_alive);
         }

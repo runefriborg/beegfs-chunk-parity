@@ -22,7 +22,7 @@ int visitor(const char *fpath, const struct stat *sb, int typeflag)
     /* Skip './' in each path */
     fpath += 2;
     len -= 2;
-    size_t fields[3] = {sb->st_mtime, MODIFY_EVENT, len};
+    size_t fields[4] = {sb->st_mtime, sb->st_size, MODIFY_EVENT, len};
     if (sizeof(fields) + len + buffer_written >= sizeof(buffer)) {
         write(1, buffer, buffer_written);
         buffer_written = 0;
