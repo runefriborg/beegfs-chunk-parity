@@ -523,9 +523,15 @@ int main(int argc, char **argv)
 
     PROF_START(sort_by_size);
     MPI_Barrier(comm);
+    if (mpi_rank == 0) {
+        printf("Starting sort..");
+        fflush(stdout);
+    }
     assert(items_received < MAX_WORKITEMS);
     qsort(received_entries, items_received, sizeof(SizeIndex), cmp_entries);
     MPI_Barrier(comm);
+    if (mpi_rank == 0)
+        printf("  done.\n");
     PROF_END(sort_by_size);
 
     PROF_START(load_db);
