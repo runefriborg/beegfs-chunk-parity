@@ -197,10 +197,15 @@ int main(int argc, char **argv)
 
     hs.fd_null = open("/dev/null", O_WRONLY);
     hs.fd_zero = open("/dev/zero", O_RDONLY);
+    char *log_file_name = calloc(1, 201);
+    snprintf(log_file_name, 200, "%s/../errors.log", db_folder);
+    hs.log = fopen(log_file_name, "w");
     hs.write_dir = openat(store_fd, "chunks", O_DIRECTORY | O_RDONLY);
     hs.read_chunk_dir = hs.write_dir;
     hs.read_parity_dir = openat(store_fd, "parity", O_DIRECTORY | O_RDONLY);
     close(store_fd);
+
+    fprintf(hs.log, "=== start new run ===\n");
 
     PROF_START(main_work);
 
@@ -254,7 +259,7 @@ int main(int argc, char **argv)
 
     if (hs.error != 0)
     {
-        fprintf(stderr, "%s gave error %d (%s) on st %d\n",
+        fprintf(hs.log, "started using zero/null after '%s' gave error %d (%s) on st %d\n",
                 hs.error_path,
                 hs.error,
                 strerror(hs.error),

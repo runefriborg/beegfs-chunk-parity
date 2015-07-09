@@ -15,6 +15,7 @@ typedef struct {
     int write_dir;
     int read_chunk_dir;
     int read_parity_dir;
+    FILE *log;
 } HostState;
 
 int process_task(

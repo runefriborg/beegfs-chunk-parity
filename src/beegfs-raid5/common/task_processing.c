@@ -19,6 +19,11 @@
 
 #define FILE_TRANSFER_BUFFER_SIZE (10*1024*1024)
 
+#define LOGERR(format, ...) do {\
+    fprintf(hs->log, "%s:%d (%s): " format, __FILE__, __LINE__, __FUNCTION__, __VA_ARGS__);\
+    fflush(hs->log);\
+} while(0)
+
 extern int st2rank[MAX_STORAGE_TARGETS];
 
 /* Replicates a mkdir -p/--parents command for the dir the filename is in */
@@ -58,8 +63,6 @@ static
 int open_fileid_readonly(int rdir, const char *id)
 {
     int fd = openat(rdir, id, O_RDONLY);
-    if (fd <= 0)
-        printf("opened '%s' with error = '%s'\n", id, strerror(errno));
     if (fd > 0)
         posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_WILLNEED);
     return fd;
@@ -175,13 +178,21 @@ void parity_generator(const char *path, const FileInfo *task, TaskInfo ti, HostS
     uint8_t *P_block = malloc(FILE_TRANSFER_BUFFER_SIZE);
     uint64_t data_left = max_cs;
     size_t buffer_size = MIN(FILE_TRANSFER_BUFFER_SIZE, max_cs);
+    size_t final_size = max_cs + active_source_ranks*8;
     int expected_messages = div_round_up(max_cs, FILE_TRANSFER_BUFFER_SIZE);
     int P_fd = hs->fd_null;
     int have_had_error = hs->error;
     if (have_had_error == 0) {
-        P_fd = open_fileid_new_parity(hs->write_dir, path, max_cs + active_source_ranks*8);
-        have_had_error = (P_fd <= 0) ? errno : 0;
+        P_fd = open_fileid_new_parity(hs->write_dir, path, final_size);
+        if (P_fd <= 0) {
+            have_had_error = errno;
+            LOGERR("opened parity chunk '%s' with error = '%s'\n",
+                    path, strerror(errno));
+        }
     }
+    else
+        LOGERR("using null for '%s', we already have global errno %d\n",
+                path, hs->error);
 
     /* If we are not rebuilding, we store all chunk sizes at the start of the
      * parity file. */
@@ -201,8 +212,12 @@ void parity_generator(const char *path, const FileInfo *task, TaskInfo ti, HostS
         if (!have_had_error) {
             ssize_t wsize = MIN(buffer_size, data_left);
             ssize_t w = write(P_fd, P_block, wsize);
+            if (w <= 0) {
+                have_had_error = errno;
+                LOGERR("writing '%s' caused new error %d (%s) after %zu bytes\n",
+                        path, errno, strerror(errno), final_size - data_left);
+            }
             data_left -= wsize;
-            have_had_error = (w <= 0)? errno : 0;
         }
         uint8_t *tmp = data_a;
         data_a = data_b;
@@ -214,6 +229,7 @@ void parity_generator(const char *path, const FileInfo *task, TaskInfo ti, HostS
     }
 
     if (hs->error == 0 && have_had_error != 0) {
+        LOGERR("local error on '%s' elevated to global error\n", path);
         hs->error = have_had_error;
         hs->error_path = strdup(path);
     }
@@ -235,9 +251,15 @@ void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, HostState
     uint64_t fd_size = 0;
     int have_had_error = hs->error;
     int fd = open_fileid_readonly(ti.read_dir, path);
-    if (have_had_error || fd <= 0) {
+    if (have_had_error) {
+        fd = hs->fd_zero;
+        LOGERR("using zero for '%s', we already have global errno %d\n",
+                path, hs->error);
+    } else if (fd <= 0) {
         have_had_error = errno;
         fd = hs->fd_zero;
+        LOGERR("opening '%s' caused new error %d (%s)\n",
+                path, errno, strerror(errno));
     }
     else {
         struct stat st;
@@ -273,8 +295,11 @@ void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, HostState
         if (!have_had_error) {
             ssize_t r = read(fd, data, MIN(buffer_size, data_left));
             have_had_error = (r <= 0)? errno : 0;
-            if (have_had_error)
+            if (have_had_error) {
                 memset(data, 0, buffer_size);
+                LOGERR("reading '%s' caused new error %d (%s) after %zu bytes\n",
+                        path, errno, strerror(errno), read_from_fd);
+            }
             if (r > 0 && (size_t)r < buffer_size)
                 memset(data + r, 0, (buffer_size - r));
         }
@@ -285,7 +310,8 @@ void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, HostState
     /* ENOENT means that the file has disappeared since we decided to do the
      * task, which means that we should see an unlink at some later point - so
      * it is not a global error. */
-    if (hs->error == 0 && have_had_error != ENOENT) {
+    if (hs->error == 0 && have_had_error != 0 && have_had_error != ENOENT) {
+        LOGERR("local error on '%s' elevated to global error\n", path);
         hs->error = have_had_error;
         hs->error_path = strdup(path);
     }
