@@ -45,26 +45,27 @@ def write_to_stdout():
 
         Write output to stdout.
     '''
-    for path,(timestamp,type) in chunks_modified.items():
+    for path,(timestamp,type,size) in chunks_modified.items():
         time_b = struct.pack('<Q',int(timestamp))
+        size_b = struct.pack('<Q',int(size))
         len_b  = struct.pack('<Q',len(path))
         assert len(type) is 1
         type_b  = struct.pack('<Q',long(ord(type)))
 
-        sys.stdout.write(time_b+type_b+len_b+path+'\0')
+        sys.stdout.write(time_b+size_b+type_b+len_b+path+'\0')
 	    
 
 def insert(entries):
     ''' Weed out all but the newest entry for each chunk.
         If timestamp_1 == timestamp_2, type='d' takes precedent.'''
 
-    for timestamp,type,path in entries:
+    for timestamp,type,path,size in entries:
         if path in chunks_modified.keys() and timestamp < chunks_modified[path][0]:
             continue
         elif path in chunks_modified.keys() and timestamp is chunks_modified[path][0] and type is not 'd':
             continue
         else:
-            chunks_modified[path] = (timestamp,type)
+            chunks_modified[path] = (timestamp,type,size)
 
 def parse(file,store,lowerbound,upperbound):
     ''' Takes a string as input and parses it into tuples of (timestamp, type,
@@ -78,7 +79,15 @@ def parse(file,store,lowerbound,upperbound):
         timestamp,type,path = entry.strip().split(' ')
         timestamp = int(timestamp)
         if path[:len(store)] == store and timestamp < upperbound and timestamp > lowerbound:
-            valid_entries.append((timestamp,type,path))
+            if type != 'd':
+                try:
+                    stat = os.stat(os.path.join(path))
+                    size = stat.st_size
+                except: 
+                    size = 0
+            else:
+                size = 0
+            valid_entries.append((timestamp,type,path,size))
 
     return valid_entries
 

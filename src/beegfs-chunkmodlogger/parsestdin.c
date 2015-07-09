@@ -16,19 +16,20 @@ static void parse_inputstream(FILE *input_file)
         const char *bufp = buf;
         while (buf_alive >= 3*sizeof(uint64_t)) {
             int64_t timestamp_secs = ((int64_t *)bufp)[0];
-            char        event_type = (char)((uint64_t *)bufp)[1];
-            uint64_t   len_of_path = ((uint64_t *)bufp)[2];
+            uint64_t          size = ((uint64_t *)bufp)[1];
+            char        event_type = (char)((uint64_t *)bufp)[2];
+            uint64_t   len_of_path = ((uint64_t *)bufp)[3];
             if (3*sizeof(uint64_t) + len_of_path > buf_alive) {
                 buf_offset = buf_alive;
                 memmove(buf, bufp, buf_alive);
                 break;
             }
-            const char *path = bufp + 3*sizeof(uint64_t);
-            bufp += len_of_path + 1 + 3*sizeof(uint64_t);
-            buf_alive -= len_of_path + 1 + 3*sizeof(uint64_t);
-	    printf("%i %c %u %s\n", timestamp_secs, event_type, len_of_path, path);
+            const char *path = bufp + 4*sizeof(uint64_t);
+            bufp += len_of_path + 1 + 4*sizeof(uint64_t);
+            buf_alive -= len_of_path + 1 + 4*sizeof(uint64_t);
+	    printf("%i %i %c %u %s\n", timestamp_secs, size, event_type, len_of_path, path);
         }
-        if (3*sizeof(uint64_t) >= buf_alive) {
+        if (4*sizeof(uint64_t) >= buf_alive) {
             buf_offset = buf_alive;
             memmove(buf, bufp, buf_alive);
         }
