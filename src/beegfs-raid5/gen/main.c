@@ -639,7 +639,7 @@ int main(int argc, char **argv)
 
     if (hs.error != 0)
     {
-        fprintf(stderr, "%s gave error %d (%s) on st %d\n",
+        fprintf(stderr, "'%s' gave error %d (%s) on st %d\n",
                 hs.error_path,
                 hs.error,
                 strerror(hs.error),

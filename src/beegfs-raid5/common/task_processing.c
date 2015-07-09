@@ -215,7 +215,7 @@ void parity_generator(const char *path, const FileInfo *task, TaskInfo ti, HostS
 
     if (hs->error == 0 && have_had_error != 0) {
         hs->error = have_had_error;
-        hs->error_path = path;
+        hs->error_path = strdup(path);
     }
 
     free(P_block);
@@ -287,7 +287,7 @@ void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, HostState
      * it is not a global error. */
     if (hs->error == 0 && have_had_error != ENOENT) {
         hs->error = have_had_error;
-        hs->error_path = path;
+        hs->error_path = strdup(path);
     }
 
     free(data);
