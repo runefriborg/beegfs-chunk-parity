@@ -282,28 +282,28 @@ void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, HostState
     else if (!ti.is_rebuilding)
         send_sync_message_to(coordinator, sizeof(fd_size), (uint8_t *)&fd_size);
 
-    uint64_t data_in_fd = 0;
-    recv_sync_message_from(coordinator, sizeof(data_in_fd), &data_in_fd);
+    uint64_t data_to_send = 0;
+    recv_sync_message_from(coordinator, sizeof(data_to_send), &data_to_send);
 
-    size_t buffer_size = MIN(FILE_TRANSFER_BUFFER_SIZE, data_in_fd);
+    size_t buffer_size = MIN(FILE_TRANSFER_BUFFER_SIZE, data_to_send);
     uint8_t *data = malloc(FILE_TRANSFER_BUFFER_SIZE);
 
-    size_t read_from_fd = 0;
-    while (read_from_fd < data_in_fd)
+    size_t data_sent = 0;
+    while (data_sent < data_to_send)
     {
-        size_t data_left = data_in_fd - read_from_fd;
-        if (!have_had_error) {
+        size_t data_left = data_to_send - data_sent;
+        if (have_had_error == 0 && data_sent < fd_size) {
             ssize_t r = read(fd, data, MIN(buffer_size, data_left));
-            have_had_error = (r <= 0)? errno : 0;
-            if (have_had_error) {
+            if (r < 0) {
+                have_had_error = errno;
                 memset(data, 0, buffer_size);
                 LOGERR("reading '%s' caused new error %d (%s) after %zu bytes\n",
-                        path, errno, strerror(errno), read_from_fd);
+                        path, errno, strerror(errno), data_sent);
             }
-            if (r > 0 && (size_t)r < buffer_size)
+            if (r >= 0 && (size_t)r < buffer_size)
                 memset(data + r, 0, (buffer_size - r));
         }
-        read_from_fd += buffer_size;
+        data_sent += buffer_size;
         send_sync_message_to(coordinator, buffer_size, data);
     }
 
