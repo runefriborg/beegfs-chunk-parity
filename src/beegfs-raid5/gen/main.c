@@ -40,9 +40,9 @@ int st2rank[MAX_STORAGE_TARGETS];
 int rank2st[MAX_STORAGE_TARGETS*2+1];
 
 static
-void send_sync_message_to(int recieving_rank, int msg_size, const uint8_t msg[static msg_size])
+void send_sync_message_to(int recieving_rank, int msg_size, void *msg)
 {
-    MPI_Ssend((void*)msg, msg_size, MPI_BYTE, recieving_rank, 0, MPI_COMM_WORLD);
+    MPI_Ssend(msg, msg_size, MPI_BYTE, recieving_rank, 0, MPI_COMM_WORLD);
 }
 
 static
@@ -232,7 +232,7 @@ void feed_targets_with(FILE *input_file, unsigned ntargets)
     ssize_t buf_size = sizeof(buf);
     ssize_t buf_offset = 0;
     int read;
-    int counter = 0;
+    int64_t counter = 0;
     while ((read = fread(buf + buf_offset, 1, buf_size - buf_offset, input_file)) > 0)
     {
         size_t buf_alive = buf_offset + read;
@@ -257,6 +257,10 @@ void feed_targets_with(FILE *input_file, unsigned ntargets)
                     chunk_size,
                     event_type);
             counter += 1;
+            if (counter >= 10000) {
+                send_sync_message_to(global_coordinator, sizeof(counter), &counter);
+                counter = 0;
+            }
             bufp += len_of_path + 4*sizeof(uint64_t);
             buf_alive -= len_of_path + 4*sizeof(uint64_t);
         }
@@ -267,8 +271,9 @@ void feed_targets_with(FILE *input_file, unsigned ntargets)
     }
     send_remaining_data_to_targets();
     /* tell global-coordinator that we are done */
-    uint8_t failed = 0;
-    send_sync_message_to(global_coordinator, sizeof(failed), &failed);
+    send_sync_message_to(global_coordinator, sizeof(counter), &counter);
+    int64_t msg = -1;
+    send_sync_message_to(global_coordinator, sizeof(msg), &msg);
 }
 
 int main(int argc, char **argv)
@@ -419,23 +424,33 @@ int main(int argc, char **argv)
      */
     int p1_eater = (mpi_rank % 2 == 1);
     int p1_feeder = (mpi_rank > 0 && mpi_rank % 2 == 0);
+    int64_t files_seen_total = 0;
+    int outputs_on_line = 0;
     if (mpi_rank == global_coordinator)
     {
         int still_in_stage_1 = ntargets;
-        int failed = 0;
+        printf("chunks: ");
         while (still_in_stage_1 > 0) {
             MPI_Status stat;
-            int8_t error;
-            MPI_Recv(&error, sizeof(error), MPI_BYTE, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &stat);
-            still_in_stage_1 -= 1;
-            failed += error;
-            if (error != 0)
-                printf("gco: got message from %d, with error = %d\n", stat.MPI_SOURCE, error);
+            int64_t files_seen;
+            MPI_Recv(&files_seen, sizeof(files_seen), MPI_BYTE, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &stat);
+            if (files_seen < 0)
+                still_in_stage_1 -= 1;
+            else {
+                files_seen_total += files_seen;
+                printf("  %ld", files_seen_total);
+                if (++outputs_on_line == 12)
+                {
+                    printf("\n");
+                    outputs_on_line = 0;
+                }
+            }
         }
         /* Inform all eaters that there is no more food */
         uint8_t dummy = 1;
         for (int i = 1; i < 1 + 2*ntargets; i+=2)
             send_sync_message_to(i, 1, &dummy);
+        printf("\nTotal number of chunks found: %8ld\n", files_seen_total);
     }
     else if (p1_feeder)
     {
