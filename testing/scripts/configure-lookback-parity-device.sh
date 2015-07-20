@@ -7,8 +7,8 @@ if [ -f /store01/loopfile ]; then
 fi
 
 
-# Create 1 TB file
-dd if=/dev/zero of=/store01/loopfile bs=10M count=100000
+# Create 10 GB file
+dd if=/dev/zero of=/store01/loopfile bs=10M count=1000
 
 # Format loopback file
 mkfs.xfs /store01/loopfile
