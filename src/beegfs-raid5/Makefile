@@ -17,7 +17,7 @@ clean:
 	$(CC) -c $(CPPFLAGS) $(CFLAGS) $< -o $@
 
 ../../bin/bp-parity-gen: gen/main.o gen/file_info_hash.o common/progress_reporting.o common/task_processing.o common/persistent_db.o
-	$(CC) -L$(CONF_LEVELDB_LIBPATH) -lleveldb $(LDFLAGS) $^ -o $@
+	$(CC) -L$(CONF_LEVELDB_LIBPATH) -lleveldb -lpthread $(LDFLAGS) $^ -o $@
 ../../bin/bp-parity-rebuild: rebuild/main.o common/progress_reporting.o common/task_processing.o common/persistent_db.o
 	$(CC) -L$(CONF_LEVELDB_LIBPATH) -lleveldb $(LDFLAGS) $^ -o $@
 

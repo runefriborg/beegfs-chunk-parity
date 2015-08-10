@@ -6,7 +6,6 @@
 
 typedef struct {
     int storage_target;
-    ProgressSample *sample;
     int corrupt_files_fd;
     int error;
     const char *error_path;

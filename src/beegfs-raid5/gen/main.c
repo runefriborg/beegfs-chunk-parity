@@ -5,10 +5,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <err.h>
+#include <errno.h>
 
 #include <unistd.h>
 #include <fcntl.h>
 #include <time.h>
+
+#include <pthread.h>
 
 #include <mpi.h>
 
@@ -103,6 +106,67 @@ choose_P_again:
     if (TEST_BIT(fi->locations, P))
         goto choose_P_again;
     fi->locations = WITH_P(fi->locations, P);
+}
+
+typedef struct {
+    HostState *hs;
+    PersistentDB *pdb;
+    const char *worklist_keys;
+    FileInfo *worklist_info;
+    size_t nitems;
+    ProgressSample *sample;
+    int *working_counter;
+    pthread_mutex_t *lock;
+    int lane;
+    int nlanes;
+} ListParams;
+
+static
+void *process_list(void *p)
+{
+    ListParams *params = (ListParams *)p;
+    HostState *hs = params->hs;
+    assert(hs);
+    FileInfo *worklist_info = params->worklist_info;
+    assert(worklist_info);
+    PersistentDB *pdb = params->pdb;
+    assert(pdb);
+    TaskInfo ti = { hs->read_chunk_dir, 0, -1, params->lane, params->sample };
+    const char *s = params->worklist_keys;
+    assert(s != NULL);
+    int lane = params->lane;
+    size_t nitems = params->nitems;
+    for (size_t i = 0; i < nitems; i++)
+    {
+        struct timespec tv1;
+        clock_gettime(CLOCK_MONOTONIC, &tv1);
+
+        const char *val = s;
+        size_t len = strlen(val);
+        s += len + 1;
+
+        if (i % params->nlanes != (size_t)lane)
+            continue;
+
+        int report = process_task(hs, val, worklist_info + i, ti);
+        if (worklist_info[i].locations & L_MASK)
+            pdb_set(pdb, val, len, worklist_info + i);
+        else
+            pdb_del(pdb, val, len);
+
+        struct timespec tv2;
+        clock_gettime(CLOCK_MONOTONIC, &tv2);
+        double new_dt = (tv2.tv_sec - tv1.tv_sec) * 1.0
+            + (tv2.tv_nsec - tv1.tv_nsec) * 1e-9;
+        if (report) {
+            params->sample->dt += new_dt;
+            params->sample->nfiles += 1;
+        }
+    }
+    pthread_mutex_lock(params->lock);
+    *params->working_counter = *params->working_counter - 1;
+    pthread_mutex_unlock(params->lock);
+    return NULL;
 }
 
 typedef struct {
@@ -292,7 +356,12 @@ int main(int argc, char **argv)
 
     PROF_START(total);
 
-    MPI_Init(&argc, &argv);
+    int provided;
+    MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
+    if (provided < MPI_THREAD_MULTIPLE) {
+        fputs("Your MPI does not support multithreading!\n", stderr);
+        MPI_Abort(MPI_COMM_WORLD, 1);
+    }
     MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &mpi_world_size);
 
@@ -302,6 +371,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    /* TODO: Should be skipped on rank 0 - it doesn't have a /store0x */
     int store_fd = open(store_dir, O_DIRECTORY | O_RDONLY);
 
     PROF_START(init);
@@ -469,7 +539,7 @@ int main(int argc, char **argv)
     else if (p1_eater)
     {
         file_info_hash = fih_init();
-        uint8_t recv_buffer[TARGET_BUFFER_SIZE] = {0};
+        uint8_t *recv_buffer = calloc(1,TARGET_BUFFER_SIZE);
         for (;;) {
             MPI_Status stat;
             MPI_Recv(recv_buffer, TARGET_BUFFER_SIZE, MPI_BYTE, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &stat);
@@ -510,6 +580,7 @@ int main(int argc, char **argv)
                         (pfi->event_type == UNLINK_EVENT));
             }
         }
+        free(recv_buffer);
         fih_term(file_info_hash);
         file_info_hash = NULL;
     }
@@ -555,7 +626,6 @@ int main(int argc, char **argv)
     HostState hs;
     memset(&hs, 0, sizeof(hs));
     hs.storage_target = my_st;
-    hs.sample = &pr_sample;
     hs.fd_null = open("/dev/null", O_WRONLY);
     hs.fd_zero = open("/dev/zero", O_RDONLY);
     char *log_file_name = calloc(1, 201);
@@ -610,42 +680,78 @@ int main(int argc, char **argv)
             printf("\n==== begin iteration with %zu files ====\n", nitems);
             printf("st - total files   | data read     | data written  | disk I/O\n");
             pr_receive_loop(mpi_bcast_size-1);
+            MPI_Barrier(comm);
             continue;
         }
 
-        TaskInfo ti = { hs.read_chunk_dir, 0, -1 };
-        size_t j = 0;
-        const char *s = worklist_keys;
-        while (j < nitems)
+#define N_LANES 4
+        pthread_attr_t attr;
+        pthread_attr_init(&attr);
+        pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+        pthread_t lanes[N_LANES];
+        ProgressSample old_samples[N_LANES];
+        ProgressSample cur_samples[N_LANES];
+        memset(old_samples, 0, sizeof(old_samples));
+        memset(cur_samples, 0, sizeof(cur_samples));
+        int *threads_working = calloc(1,sizeof(int));
+        *threads_working = N_LANES;
+        pthread_mutex_t finish_lock = PTHREAD_MUTEX_INITIALIZER;
+        ListParams param0 = {&hs,pdb,worklist_keys,worklist_info,nitems,NULL,threads_working,&finish_lock,0,N_LANES};
+        ListParams params[N_LANES];
+        for (int j = 0; j < N_LANES; j++) {
+            params[j] = param0;
+            params[j].sample = &cur_samples[j];
+            params[j].lane = j;
+            int rc = pthread_create(&lanes[j], &attr, process_list, &params[j]);
+            if (rc)
+                errx(1, "Thread create failed (rc = %d)", rc);
+        }
+        pthread_attr_destroy(&attr);
+        for (;;)
         {
-            struct timespec tv1;
-            clock_gettime(CLOCK_MONOTONIC, &tv1);
-            size_t s_len = strlen(s);
-            int report = process_task(&hs, s, worklist_info + j, ti);
-            if (worklist_info[j].locations & L_MASK)
-                pdb_set(pdb, s, s_len, worklist_info + j);
-            else
-                pdb_del(pdb, s, s_len);
-            s += s_len + 1;
-            j += 1;
-            struct timespec tv2;
-            clock_gettime(CLOCK_MONOTONIC, &tv2);
-            double dt = (tv2.tv_sec - tv1.tv_sec) * 1.0
-                + (tv2.tv_nsec - tv1.tv_nsec) * 1e-9;
-            if (report) {
-                pr_sample.dt += dt;
-                pr_sample.nfiles += 1;
+            for (int r = 0; r < 100; r++)
+            {
+                pthread_mutex_lock(&finish_lock);
+                if (*threads_working == 0)
+                    goto after_reporting_loop;
+                pthread_mutex_unlock(&finish_lock);
+                usleep(10*1000);
             }
-            if (pr_sample.dt >= 1.0) {
-                pr_add_tmp_to_total(&pr_sample);
-                pr_report_progress(&pr_sender, pr_sample);
-                pr_clear_tmp(&pr_sample);
+            for (int j = 0; j < N_LANES; j++) {
+                size_t nf = cur_samples[j].nfiles;
+                double ndt = cur_samples[j].dt;
+                size_t nbw = cur_samples[j].bytes_written;
+                size_t nbr = cur_samples[j].bytes_read;
+                pr_sample.nfiles += nf - old_samples[j].nfiles;
+                pr_sample.dt = 1.0;//ndt - old_samples[j].dt;
+                pr_sample.bytes_written += nbw - old_samples[j].bytes_written;
+                pr_sample.bytes_read += nbr - old_samples[j].bytes_read;
+                old_samples[j].nfiles = nf;
+                old_samples[j].dt = ndt;
+                old_samples[j].bytes_written = nbw;
+                old_samples[j].bytes_read = nbr;
             }
+            pr_add_tmp_to_total(&pr_sample);
+            pr_report_progress(&pr_sender, pr_sample);
+            pr_clear_tmp(&pr_sample);
+        }
+after_reporting_loop:
+        pthread_mutex_unlock(&finish_lock);
+        for (int j = 0; j < N_LANES; j++) {
+            void *status;
+            int rc = pthread_join(lanes[j], &status);
+            if (rc)
+                errx(1, "Thread join error (rc = %d) on thread %d", rc, j);
+            pr_sample.nfiles += cur_samples[j].nfiles - old_samples[j].nfiles;
+            pr_sample.dt += cur_samples[j].dt - old_samples[j].dt;
+            pr_sample.bytes_written += cur_samples[j].bytes_written - old_samples[j].bytes_written;
+            pr_sample.bytes_read += cur_samples[j].bytes_read - old_samples[j].bytes_read;
         }
         pr_add_tmp_to_total(&pr_sample);
         pr_report_progress(&pr_sender, pr_sample);
         pr_clear_tmp(&pr_sample);
         pr_report_done(&pr_sender);
+        MPI_Barrier(comm);
     }
 
     if (hs.error != 0)

@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include "progress_reporting.h"
+
 #define MODIFY_EVENT 'm'
 #define UNLINK_EVENT 'd'
 
@@ -23,6 +25,8 @@ typedef struct {
     int read_dir;
     int is_rebuilding;
     int actual_P_st; /* <- Only valid when rebuilding */
+    int tag;
+    ProgressSample *sample;
 } TaskInfo;
 
 typedef struct { int id, rank; } Target;

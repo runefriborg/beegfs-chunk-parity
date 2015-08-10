@@ -51,7 +51,6 @@ int do_file(const char *key, size_t keylen, const FileInfo *fi)
         return 0;
 
     hs.storage_target = my_st;
-    hs.sample = &pr_sample;
 
     if (helper == my_st) {
         /* Send fi, key to rebuild_target so it knows whats up */
@@ -66,7 +65,7 @@ int do_file(const char *key, size_t keylen, const FileInfo *fi)
     }
     /* The rank that holds the P block reads from parity and not chunks */
     int rdir = (P == my_st)? hs.read_parity_dir : hs.read_chunk_dir;
-    TaskInfo ti = { rdir, 1, P };
+    TaskInfo ti = { rdir, 1, P, 0, &pr_sample };
     int report = process_task(&hs, key, &mod_fi, ti);
 #if 0
 #define FIRST_8_BITS(x)     ((x) & 0x80 ? 1 : 0), ((x) & 0x40 ? 1 : 0), \

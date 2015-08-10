@@ -40,23 +40,23 @@ static void mkdir_for_file(int wdir, const char *filename) {
 }
 
 static
-void send_sync_message_to(int recieving_rank, int msg_size, const uint8_t msg[static msg_size])
+void send_sync_message_to(int recieving_rank, int tag, int msg_size, const uint8_t msg[static msg_size])
 {
-    MPI_Send((void*)msg, msg_size, MPI_BYTE, recieving_rank, 0, MPI_COMM_WORLD);
+    MPI_Send((void*)msg, msg_size, MPI_BYTE, recieving_rank, tag, MPI_COMM_WORLD);
 }
 static
-void recv_sync_message_from(int sending_rank, int size, void *dst)
+void recv_sync_message_from(int sending_rank, int tag, int size, void *dst)
 {
     MPI_Status stat;
-    MPI_Recv(dst, size, MPI_BYTE, sending_rank, 0, MPI_COMM_WORLD, &stat);
+    MPI_Recv(dst, size, MPI_BYTE, sending_rank, tag, MPI_COMM_WORLD, &stat);
 }
 
 static
 void push_corrupt_path(HostState *hs, const char *path)
 {
-    write(hs->corrupt_files_fd, path, strlen(path));
-    char newline = '\n';
-    write(hs->corrupt_files_fd, &newline, sizeof(newline));
+    char tmp[100] = {0};
+    int len = snprintf(tmp, sizeof(tmp), "%s\n", path);
+    write(hs->corrupt_files_fd, tmp, len);
 }
 
 static
@@ -120,12 +120,12 @@ void parity_generator(const char *path, const FileInfo *task, TaskInfo ti, HostS
 #define IRECV_ALL(ii, loc, size) do { \
     for (int ii = 0; ii < active_source_ranks; ii++) \
         MPI_Irecv((loc), (size), MPI_BYTE, ranks[ii], \
-                0, MPI_COMM_WORLD, &source_messages[ii]); \
+                ti.tag, MPI_COMM_WORLD, &source_messages[ii]); \
     } while(0)
 #define SEND_ALL(data, data_size) do { \
     for (int ii = 0; ii < active_source_ranks; ii++) \
         MPI_Isend((data), (data_size), MPI_BYTE, ranks[ii], \
-                0, MPI_COMM_WORLD, &source_messages[ii]); \
+                ti.tag, MPI_COMM_WORLD, &source_messages[ii]); \
     MPI_Waitall(active_source_ranks, source_messages, source_stat); \
     } while(0)
 
@@ -150,6 +150,7 @@ void parity_generator(const char *path, const FileInfo *task, TaskInfo ti, HostS
     {
         recv_sync_message_from(
                 st2rank[ti.actual_P_st],
+                ti.tag,
                 active_source_ranks*sizeof(uint64_t),
                 chunk_sizes);
     }
@@ -171,7 +172,6 @@ void parity_generator(const char *path, const FileInfo *task, TaskInfo ti, HostS
         int my_index = active_ranks(loc & my_mask);
         final_parity_chunk_size = chunk_sizes[my_index];
     }
-    hs->sample->bytes_written += final_parity_chunk_size;
 
     uint8_t *data_a = malloc(active_source_ranks * FILE_TRANSFER_BUFFER_SIZE);
     uint8_t *data_b = malloc(active_source_ranks * FILE_TRANSFER_BUFFER_SIZE);
@@ -219,6 +219,7 @@ void parity_generator(const char *path, const FileInfo *task, TaskInfo ti, HostS
             }
             data_left -= wsize;
         }
+        ti.sample->bytes_written += buffer_size;
         uint8_t *tmp = data_a;
         data_a = data_b;
         data_b = tmp;
@@ -237,7 +238,8 @@ void parity_generator(const char *path, const FileInfo *task, TaskInfo ti, HostS
     free(P_block);
     free(data_a);
     free(data_b);
-    close(P_fd);
+    if (P_fd != hs->fd_null)
+        close(P_fd);
 #undef SEND_ALL
 #undef IRECV_ALL
 }
@@ -272,18 +274,17 @@ void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, HostState
                 && st.st_mtime > task->timestamp)
             push_corrupt_path(hs, path);
     }
-    hs->sample->bytes_read += fd_size;
 
     if (ti.is_rebuilding && ti.actual_P_st == my_st) {
         uint64_t chunk_sizes[MAX_STORAGE_TARGETS];
         read(fd, chunk_sizes, ntargets*sizeof(uint64_t));
-        send_sync_message_to(coordinator, ntargets*sizeof(uint64_t), (uint8_t*)chunk_sizes);
+        send_sync_message_to(coordinator, ti.tag, ntargets*sizeof(uint64_t), (uint8_t*)chunk_sizes);
     }
     else if (!ti.is_rebuilding)
-        send_sync_message_to(coordinator, sizeof(fd_size), (uint8_t *)&fd_size);
+        send_sync_message_to(coordinator, ti.tag, sizeof(fd_size), (uint8_t *)&fd_size);
 
     uint64_t data_to_send = 0;
-    recv_sync_message_from(coordinator, sizeof(data_to_send), &data_to_send);
+    recv_sync_message_from(coordinator, ti.tag, sizeof(data_to_send), &data_to_send);
 
     size_t buffer_size = MIN(FILE_TRANSFER_BUFFER_SIZE, data_to_send);
     uint8_t *data = malloc(FILE_TRANSFER_BUFFER_SIZE);
@@ -303,8 +304,9 @@ void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, HostState
             if (r >= 0 && (size_t)r < buffer_size)
                 memset(data + r, 0, (buffer_size - r));
         }
+        ti.sample->bytes_read += buffer_size;
         data_sent += buffer_size;
-        send_sync_message_to(coordinator, buffer_size, data);
+        send_sync_message_to(coordinator, ti.tag, buffer_size, data);
     }
 
     /* ENOENT means that the file has disappeared since we decided to do the
@@ -317,7 +319,8 @@ void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, HostState
     }
 
     free(data);
-    close(fd);
+    if (fd != hs->fd_zero)
+        close(fd);
 }
 
 /* Returns non-zero if we are involved in the task */
