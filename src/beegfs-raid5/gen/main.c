@@ -342,6 +342,35 @@ void feed_targets_with(FILE *input_file, unsigned ntargets)
     send_sync_message_to(global_coordinator, sizeof(msg), &msg);
 }
 
+/* Really minimal PCG32 code / (c) 2014 M.E. O'Neill / pcg-random.org *
+ * Licensed under Apache License 2.0 (NO WARRANTY, etc. see website)  */
+typedef struct { uint64_t state;  uint64_t inc; } pcg32_random_t;
+
+static uint32_t pcg32_random_r(pcg32_random_t* rng)
+{
+    uint64_t oldstate = rng->state;
+    rng->state = oldstate * 6364136223846793005ULL + (rng->inc|1);
+    uint32_t xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
+    uint32_t rot = oldstate >> 59u;
+    return (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
+}
+/* -- end of PCG32 code -- */
+
+static
+void shuffle(SizeIndex *array, size_t n)
+{
+    if (n <= 1)
+        return;
+    pcg32_random_t rng = {0x853c49e6748fea9bULL, 0xda3e39cb94b95bdbULL};
+    for (size_t i = n - 1; i > 0; i--) /* i = (n-1),(n-2),...,1 */
+    {
+        size_t j = pcg32_random_r(&rng) % (i + 1);
+        SizeIndex t = array[j];
+        array[j] = array[i];
+        array[i] = t;
+    }
+}
+
 int main(int argc, char **argv)
 {
     if (argc != 7) {
@@ -601,6 +630,7 @@ int main(int argc, char **argv)
         fflush(stdout);
     }
     assert(items_received < MAX_WORKITEMS);
+    shuffle(received_entries, items_received);
     qsort(received_entries, items_received, sizeof(SizeIndex), cmp_entries);
     MPI_Barrier(comm);
     if (mpi_rank == 0)
