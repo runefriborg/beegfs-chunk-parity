@@ -47,13 +47,7 @@ PersistentDB* pdb_init(const char *db_folder)
 
 void pdb_term(PersistentDB *pdb)
 {
-    leveldb_options_destroy(pdb->options);
-    leveldb_cache_destroy(pdb->cache);
-    leveldb_readoptions_destroy(pdb->ropts);
-    leveldb_writeoptions_destroy(pdb->wopts);
     leveldb_close(pdb->db);
-    memset(pdb, 0, sizeof(PersistentDB));
-    free(pdb);
 }
 
 void pdb_set(PersistentDB *pdb, const char *key, size_t keylen, const FileInfo *val)
