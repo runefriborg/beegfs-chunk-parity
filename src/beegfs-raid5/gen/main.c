@@ -86,6 +86,8 @@ static void fill_in_missing_fields(FileInfo *dst, const FileInfo *src)
     dst->locations = (dst->locations | src->locations) & L_MASK;
     if (TEST_BIT(dst->locations, old_P) == 0)
         dst->locations = WITH_P(dst->locations, old_P);
+    else
+        dst->locations = WITH_P(dst->locations, NO_P);
 }
 
 /*
@@ -661,7 +663,7 @@ int main(int argc, char **argv)
                 if (has_an_old_version)
                     fill_in_missing_fields(fi, &prev_fi);
                 fi->locations &= ~new_fi.deleted;
-                if (GET_P(fi->locations) == NO_P)
+                if (P_IS_INVALID(fi->locations))
                     select_P(s, fi, (unsigned)ntargets);
                 memcpy(worklist_keys + path_bytes, s, s_len + 1);
                 path_bytes += s_len + 1;

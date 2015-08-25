@@ -15,6 +15,7 @@
 #define L_MASK UINT64_C(0x00FFFFFFFFFFFFFF)
 #define WITH_P(loc, P) (((loc) & L_MASK) | (((P) << 56) & P_MASK))
 #define NO_P UINT64_C(0xFF)
+#define P_IS_INVALID(loc) (GET_P(loc) == NO_P || TEST_BIT((loc),GET_P(loc)))
 
 typedef struct {
     int64_t timestamp;

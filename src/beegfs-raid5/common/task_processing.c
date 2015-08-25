@@ -323,6 +323,7 @@ void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, HostState
 int process_task(HostState *hs, const char *path, const FileInfo *fi, TaskInfo ti)
 {
     assert(GET_P(fi->locations) != NO_P);
+    assert(P_IS_INVALID(fi->locations) == 0);
     assert(hs->storage_target >= 0);
 
     if (GET_P(fi->locations) == hs->storage_target)
