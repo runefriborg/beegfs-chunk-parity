@@ -251,13 +251,9 @@ void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, HostState
     int coordinator = P_rank(task);
     int ntargets = active_ranks(task->locations);
     uint64_t fd_size = 0;
-    int have_had_error = hs->error;
+    int have_had_error = 0;
     int fd = open_fileid_readonly(ti.read_dir, path);
-    if (have_had_error) {
-        fd = hs->fd_zero;
-        LOGERR("using zero for '%s', we already have global errno %d\n",
-                path, hs->error);
-    } else if (fd <= 0) {
+    if (fd <= 0) {
         have_had_error = errno;
         fd = hs->fd_zero;
         LOGERR("opening '%s' caused new error %d (%s)\n",
