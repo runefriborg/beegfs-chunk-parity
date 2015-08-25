@@ -64,7 +64,7 @@ int open_fileid_readonly(int rdir, const char *id)
 {
     int fd = openat(rdir, id, O_RDONLY);
     if (fd > 0)
-        posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_WILLNEED);
+        posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
     return fd;
 }
 
