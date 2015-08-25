@@ -22,9 +22,6 @@ void pr_clear_tmp(ProgressSample *sample)
 
 void pr_report_progress(ProgressSender *s, ProgressSample sample)
 {
-    if (sample.nfiles == 0)
-        return;
-
     if (s->needs_wait) {
         MPI_Status stat;
         MPI_Wait(&s->request, &stat);
