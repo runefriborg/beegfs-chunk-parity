@@ -20,6 +20,7 @@
 #include "../common/progress_reporting.h"
 #include "../common/task_processing.h"
 #include "file_info_hash.h"
+#include "assign_lanes.h"
 
 #define MAX_TARGETS MAX_STORAGE_TARGETS
 #define TARGET_BUFFER_SIZE (10*1024*1024)
@@ -115,6 +116,7 @@ typedef struct {
     PersistentDB *pdb;
     const char *worklist_keys;
     FileInfo *worklist_info;
+    int *worklist_lanes;
     size_t nitems;
     ProgressSample *sample;
     int *working_counter;
@@ -147,7 +149,7 @@ void *process_list(void *p)
         size_t len = strlen(val);
         s += len + 1;
 
-        if (i % params->nlanes != (size_t)lane)
+        if (params->worklist_lanes[i] != lane)
             continue;
 
         int report = process_task(hs, val, worklist_info + i, ti);
@@ -716,11 +718,13 @@ int main(int argc, char **argv)
             continue;
         }
 
-#define N_LANES 4
+#define N_LANES 12
+        int *lanes = malloc(nitems*sizeof(int));
+        assign_lanes(N_LANES, nitems, worklist_info, lanes);
         pthread_attr_t attr;
         pthread_attr_init(&attr);
         pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
-        pthread_t lanes[N_LANES];
+        pthread_t threads[N_LANES];
         ProgressSample old_samples[N_LANES];
         ProgressSample cur_samples[N_LANES];
         memset(old_samples, 0, sizeof(old_samples));
@@ -728,13 +732,13 @@ int main(int argc, char **argv)
         int *threads_working = calloc(1,sizeof(int));
         *threads_working = N_LANES;
         pthread_mutex_t finish_lock = PTHREAD_MUTEX_INITIALIZER;
-        ListParams param0 = {&hs,pdb,worklist_keys,worklist_info,nitems,NULL,threads_working,&finish_lock,0,N_LANES};
+        ListParams param0 = {&hs,pdb,worklist_keys,worklist_info,lanes,nitems,NULL,threads_working,&finish_lock,0,N_LANES};
         ListParams params[N_LANES];
         for (int j = 0; j < N_LANES; j++) {
             params[j] = param0;
             params[j].sample = &cur_samples[j];
             params[j].lane = j;
-            int rc = pthread_create(&lanes[j], &attr, process_list, &params[j]);
+            int rc = pthread_create(&threads[j], &attr, process_list, &params[j]);
             if (rc)
                 errx(1, "Thread create failed (rc = %d)", rc);
         }
@@ -771,7 +775,7 @@ after_reporting_loop:
         pthread_mutex_unlock(&finish_lock);
         for (int j = 0; j < N_LANES; j++) {
             void *status;
-            int rc = pthread_join(lanes[j], &status);
+            int rc = pthread_join(threads[j], &status);
             if (rc)
                 errx(1, "Thread join error (rc = %d) on thread %d", rc, j);
             pr_sample.nfiles += cur_samples[j].nfiles - old_samples[j].nfiles;
