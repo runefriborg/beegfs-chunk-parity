@@ -3,26 +3,36 @@ set -o nounset
 set -o pipefail
 set -o errexit
 
-arg1="${1:-}"
-dname="beegfs-parity-store01"
+dname="${1:-}"
 last_successful_timestamp_file="/opt/$dname/spool/last-gen-timestamp"
 
 function usage {
-echo "usage: beegfs-parity-rebuild"
+echo "usage: beegfs-parity-rebuild <config>"
+echo "   or: beegfs-parity-rebuild --help"
 }
 
-case $arg1 in
+case $dname in
     -h|--help)
     usage
     exit 0
     ;;
     "")
-    ;;
-    *)
-    usage 1>&2
+    usage
     exit 1
     ;;
+    *)
+    ;;
 esac
+
+function must_have_file {
+    f="/opt/$dname/$1"
+    if [ ! -e "$f" ]; then
+        echo "Can't find file '$f'" 1>&2
+        exit 1
+    fi
+}
+must_have_file "etc/basedir"
+must_have_file "etc/hosts"
 
 if [[ $EUID -ne 0 ]]; then
     echo "You need root privilege to run this program" 1>&2
@@ -36,7 +46,6 @@ fi
 # Make sure all necessary folders are present
 mkdir --parents "/opt/$dname/run"
 mkdir --parents "/opt/$dname/spool"
-mkdir --parents "/opt/$dname/etc"
 
 (
 if flock --exclusive --nonblock 500; then
@@ -45,8 +54,12 @@ if flock --exclusive --nonblock 500; then
         exit 1
     fi
 
-    # TODO: Auto discover which node is down, or take as param.
-    rebuild_target="3"
+    rebuild_host="s11i04"
+    rebuild_host_index=`awk "/$rebuild_host/ {print FNR}" "/opt/$dname/etc/hosts"`
+    rebuild_target=`expr $rebuild_host_index - 1`
+    safe_host=`comm -13 <(echo $rebuild_host) "/opt/$dname/etc/hosts" | head -n 1`
+    ssh $rebuild_host rm -rf /opt/$dname/spool/db
+    scp -pr $safe_host:/opt/$dname/spool/db $rebuild_host:/opt/$dname/spool/db
 
     base_dir=`cat /opt/$dname/etc/basedir`
     spool="/opt/$dname/spool/"

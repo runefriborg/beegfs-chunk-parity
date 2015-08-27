@@ -27,7 +27,6 @@
     + (t_##name##_1.tv_nsec - t_##name##_0.tv_nsec) * 1e-9)
 
 static int rebuild_target;
-static int helper;
 static int mpi_rank;
 static int mpi_world_size;
 int st2rank[MAX_STORAGE_TARGETS];
@@ -40,6 +39,7 @@ static HostState hs;
 
 int do_file(const char *key, size_t keylen, const FileInfo *fi)
 {
+    (void) keylen;
     struct timespec tv1;
     clock_gettime(CLOCK_MONOTONIC, &tv1);
 
@@ -52,11 +52,6 @@ int do_file(const char *key, size_t keylen, const FileInfo *fi)
 
     hs.storage_target = my_st;
 
-    if (helper == my_st) {
-        /* Send fi, key to rebuild_target so it knows whats up */
-        MPI_Ssend((void*)fi, sizeof(FileInfo), MPI_BYTE, st2rank[rebuild_target], 0, MPI_COMM_WORLD);
-        MPI_Ssend((void*)key, keylen, MPI_BYTE, st2rank[rebuild_target], 0, MPI_COMM_WORLD);
-    }
     FileInfo mod_fi = *fi;
     if (P != rebuild_target) {
         mod_fi.locations |= (1 << P);
@@ -116,11 +111,6 @@ int main(int argc, char **argv)
         return 1;
 
     if (rebuild_target < 0 || rebuild_target > ntargets)
-        return 1;
-    helper = 1;
-    while (helper == rebuild_target)
-        helper += 1;
-    if (helper == rebuild_target)
         return 1;
 
     int store_fd = open(store_dir, O_DIRECTORY | O_RDONLY);
@@ -190,7 +180,7 @@ int main(int argc, char **argv)
     PROF_END(init);
 
     if (mpi_rank == 0)
-        printf("%d(rank=%d), %d(rank=%d)\n", rebuild_target, st2rank[rebuild_target], helper, st2rank[helper]);
+        printf("%d(rank=%d)\n", rebuild_target, st2rank[rebuild_target]);
     else
         hs.corrupt_files_fd = open(corrupt_list_file, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
 
@@ -210,39 +200,12 @@ int main(int argc, char **argv)
 
     memset(&pr_sender, 0, sizeof(pr_sender));
 
-    if (mpi_rank != 0 && rank2st[mpi_rank] != rebuild_target)
+    if (mpi_rank != 0)
     {
         PersistentDB *pdb = pdb_init(db_folder);
         pdb_iterate(pdb, do_file);
         pdb_term(pdb);
 
-        if (rank2st[mpi_rank] == helper) {
-            int dummy;
-            MPI_Ssend((void*)&dummy, sizeof(dummy), MPI_BYTE, st2rank[rebuild_target], 0, MPI_COMM_WORLD);
-        }
-        pr_add_tmp_to_total(&pr_sample);
-        pr_report_progress(&pr_sender, pr_sample);
-        pr_report_done(&pr_sender);
-    }
-    else if (rank2st[mpi_rank] == rebuild_target)
-    {
-        int helper_rank = st2rank[helper];
-        MPI_Status stat;
-        int count;
-        FileInfo fi;
-        MPI_Recv(&fi, sizeof(FileInfo), MPI_BYTE, helper_rank, 0, MPI_COMM_WORLD, &stat);
-        MPI_Get_count(&stat, MPI_BYTE, &count);
-        while (count == sizeof(FileInfo)) {
-            char key[200];
-            MPI_Recv(key, sizeof(key), MPI_BYTE, helper_rank, 0, MPI_COMM_WORLD, &stat);
-            int keylen;
-            MPI_Get_count(&stat, MPI_BYTE, &keylen);
-            key[keylen] = '\0';
-            do_file(key, keylen, &fi);
-
-            MPI_Recv(&fi, sizeof(FileInfo), MPI_BYTE, helper_rank, 0, MPI_COMM_WORLD, &stat);
-            MPI_Get_count(&stat, MPI_BYTE, &count);
-        }
         pr_add_tmp_to_total(&pr_sample);
         pr_report_progress(&pr_sender, pr_sample);
         pr_report_done(&pr_sender);
