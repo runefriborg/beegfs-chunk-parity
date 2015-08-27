@@ -7,7 +7,7 @@ dname="${1:-}"
 last_successful_timestamp_file="/opt/$dname/spool/last-gen-timestamp"
 
 function usage {
-echo "usage: beegfs-parity-rebuild <config>"
+echo "usage: beegfs-parity-rebuild <config> <host to rebuild>"
 echo "   or: beegfs-parity-rebuild --help"
 }
 
@@ -23,6 +23,12 @@ case $dname in
     *)
     ;;
 esac
+
+rebuild_host="${2:-}"
+if [ -z $rebuild_host ]; then
+    echo "You must specify a host to rebuild" 1>&2
+    exit 1
+fi
 
 function must_have_file {
     f="/opt/$dname/$1"
@@ -54,9 +60,13 @@ if flock --exclusive --nonblock 500; then
         exit 1
     fi
 
-    rebuild_host="s11i04"
-    rebuild_host_index=`awk "/$rebuild_host/ {print FNR}" "/opt/$dname/etc/hosts"`
-    rebuild_target=`expr $rebuild_host_index - 1`
+    hostfile="/opt/$dname/etc/hosts"
+    if ! grep -q "$rebuild_host" "$hostfile" ; then
+        echo "** Error: Uknown host '$rebuild_host'" 1>&2
+        exit 1
+    fi
+
+    rebuild_target=`awk "/$rebuild_host/ {print FNR-1}" "$hostfile"`
     safe_host=`comm -13 <(echo $rebuild_host) "/opt/$dname/etc/hosts" | head -n 1`
     ssh $rebuild_host rm -rf /opt/$dname/spool/db
     scp -pr $safe_host:/opt/$dname/spool/db $rebuild_host:/opt/$dname/spool/db
@@ -65,7 +75,7 @@ if flock --exclusive --nonblock 500; then
     spool="/opt/$dname/spool/"
     mkdir --parents $spool
     echo `hostname -s` > /opt/$dname/run/hosts
-    cat "/opt/$dname/etc/hosts" >> "/opt/$dname/run/hosts"
+    cat "$hostfile" >> "/opt/$dname/run/hosts"
     mpirun="mpirun --hostfile /opt/$dname/run/hosts"
     $mpirun ./bp-parity-rebuild $rebuild_target $base_dir $spool/data /tmp/$base_dir-corrupted_chunks /opt/$dname/spool/db
     # Collect list of potentially corrupt chunks
