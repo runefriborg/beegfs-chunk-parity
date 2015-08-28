@@ -160,6 +160,8 @@ int unlinkat(int dirfd, const char *pathname, int flags);
 
 int unlinkat(int dirfd, const char *pathname, int flags)
 {
+        // unlinkat could be the first function called in this module. Use init_once()
+        init_once(dirfd);
 	int retval = _original_unlinkat(dirfd, pathname, flags); 
 	if(retval == 0) {
 		debug("unlinkat()      path='%s/%s'. Writing log.\n",dirpath,pathname);
@@ -177,33 +179,6 @@ int close(int fd);
 
 int close(int fd)
 {
-	/*
-	debug("close() fd='%d'\n"
-	      "open_files[20]='%s'\n"
-	      "open_files[22]='%s'\n"
-	      "open_files[22]='%s'\n"
-	      "open_files[23]='%s'\n"
-	      "open_files[24]='%s'\n"
-	      "open_files[25]='%s'\n"
-	      "open_files[26]='%s'\n"
-	      "open_files[27]='%s'\n"
-	      "open_files[28]='%s'\n"
-	      "open_files[29]='%s'\n"
-	      "open_files[30]='%s'\n",
-	      fd,
-	      open_files[20],
-	      open_files[21],
-	      open_files[22],
-	      open_files[23],
-	      open_files[24],
-	      open_files[25],
-	      open_files[26],
-	      open_files[27],
-	      open_files[28],
-	      open_files[29],
-	      open_files[30]);
-	      */
-
 	if(dirpath == NULL)
 	{
 		debug("close() dirpath == NULL on close. Shouldn't happen\n");
