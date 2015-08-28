@@ -4,11 +4,12 @@ set -o pipefail
 set -o errexit
 
 arg1="${1:-}"
-dname="beegfs-parity-store01"
+dname="${2:-}"
 last_successful_timestamp_file="/opt/$dname/spool/last-gen-timestamp"
 
 function usage {
-echo "usage: beegfs-parity-gen --complete|--partial"
+echo "usage: beegfs-parity-gen --complete <config>"
+echo "   or: beegfs-parity-gen --partial <config>"
 }
 
 case $arg1 in
@@ -28,6 +29,21 @@ case $arg1 in
     ;;
 esac
 
+if [ -z $dname ]; then
+    echo "You must specify a config to use" 1>&2
+    exit 1
+fi
+
+function must_have_file {
+    f="/opt/$dname/$1"
+    if [ ! -e "$f" ]; then
+        echo "Can't find file '$f'" 1>&2
+        exit 1
+    fi
+}
+must_have_file "etc/basedir"
+must_have_file "etc/hosts"
+
 if [[ $EUID -ne 0 ]]; then
     echo "You need root privilege to run this program" 1>&2
     exit 1
@@ -40,7 +56,6 @@ fi
 # Make sure all necessary folders are present
 mkdir --parents "/opt/$dname/run"
 mkdir --parents "/opt/$dname/spool"
-mkdir --parents "/opt/$dname/etc"
 
 function check_beegfs_servers_online {
 #TODO: any other ways the servers can be down?
@@ -70,7 +85,8 @@ if flock --exclusive --nonblock 500; then
 
     if [ "$operation" == "complete" ] && [ "$last_timestamp" != "0" ]; then
         echo "** Warning: A complete run has already been done."
-        echo "  If you continue all existing parity chunks will be deleted!"
+        echo "  All existing parity data will be overwritten."
+        echo "  This may take a long time!"
         read -p "Continue? [y/N]" -n 1 -r -s reply
         echo
         if [[ $reply =~ [Yy] ]]; then
@@ -79,7 +95,6 @@ if flock --exclusive --nonblock 500; then
             echo "Aborting"
             exit 1
         fi
-        # Tell everyone to delete all old chunks and dbs
     fi
 
     base_dir=`cat /opt/$dname/etc/basedir`
