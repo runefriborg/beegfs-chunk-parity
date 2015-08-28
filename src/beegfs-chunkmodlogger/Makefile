@@ -15,9 +15,7 @@ gen-chunkmod-filelist-mpi: gen-chunkmod-filelist-mpi.c
 
 install: chunkmod_intercept.so
 	cp chunkmod_intercept.so /usr/lib64/chunkmod_intercept.so
-
-init: beegfs-storage.init-d
-	diff $^ /etc/init.d/beegfs-storage  -U 0 | grep @@ | wc -l | grep 1 -q && diff beegfs-storage.init-d /etc/init.d/beegfs-storage | grep ">.*daemon" -q && echo "Replaceing beegfs-storage.init-d" && \cp $^ /etc/init.d/beegfs-storage -v
+	./make_beegfs-storage_wrapper.sh
 
 clean:
 	find . -name "*.c" -exec basename \{\} .c \; | xargs rm 2> /dev/null ; true
