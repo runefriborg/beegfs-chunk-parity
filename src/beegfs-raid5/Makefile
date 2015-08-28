@@ -1,7 +1,9 @@
 include ../beegfs-conf.sh
 
+GIT_COMMIT=0x`git rev-parse --short=8 HEAD`
 CC=mpicc
 CPPFLAGS?=-Wall -Wextra -pedantic -std=gnu99 -I$(CONF_LEVELDB_INCLUDEPATH) -g -O0
+CPPFLAGS+=-D_GIT_COMMIT=${GIT_COMMIT}
 SOURCES=gen/main.c gen/file_info_hash.c gen/assign_lanes.c rebuild/main.c common/progress_reporting.c common/task_processing.c common/persistent_db.c
 OBJECTS=$(SOURCES:.c=.o)
 PROGRAMS=../../bin/bp-parity-gen ../../bin/bp-parity-rebuild

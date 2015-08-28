@@ -418,8 +418,8 @@ int main(int argc, char **argv)
     }
 
     /* Create mapping from storage targets to ranks, and vice versa */
-    Target targetIDs[2*MAX_TARGETS] = {{0,0}};
-    Target targetID = {0,0};
+    Target targetIDs[2*MAX_TARGETS] = {{0,0,0}};
+    Target targetID = {0,0,GIT_VERSION};
     if (mpi_rank != 0)
     {
         int target_ID_fd = openat(store_fd, "targetNumID", O_RDONLY);
@@ -435,8 +435,9 @@ int main(int argc, char **argv)
             0,
             MPI_COMM_WORLD);
     if (mpi_rank == 0) {
-        for (int i = 1; i < 2*ntargets+1; i+=2)
-            assert(targetIDs[i].id == targetIDs[i+1].id);
+        for (int i = 1; i < 2*ntargets+1; i++)
+            if (targetIDs[i].version != GIT_VERSION)
+                errx(1, "Version mismatch");
         for (int i = 0; i < ntargets; i++)
             targetIDs[i] = targetIDs[2*i+1];
         int k = last_run.ntargets;

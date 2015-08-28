@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <err.h>
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -35,7 +36,6 @@ int rank2st[MAX_STORAGE_TARGETS+1];
 static ProgressSender pr_sender;
 static ProgressSample pr_sample = PROGRESS_SAMPLE_INIT;
 static HostState hs;
-
 
 int do_file(const char *key, size_t keylen, const FileInfo *fi)
 {
@@ -127,8 +127,8 @@ int main(int argc, char **argv)
     }
 
     /* Create mapping from storage targets to ranks, and vice versa */
-    Target targetIDs[MAX_STORAGE_TARGETS] = {{0,0}};
-    Target targetID = {0,0};
+    Target targetIDs[MAX_STORAGE_TARGETS] = {{0,0,0}};
+    Target targetID = {0,0,GIT_VERSION};
     if (mpi_rank != 0)
     {
         int target_ID_fd = openat(store_fd, "targetNumID", O_RDONLY);
@@ -148,6 +148,9 @@ int main(int argc, char **argv)
             /* ERROR - new number of targets */
             assert(0);
         }
+        for (int i = 0; i < ntargets; i++)
+            if (targetIDs[i].version != GIT_VERSION)
+                errx(1, "Version mismatch");
         for (int i = 0; i < ntargets; i++)
             targetIDs[i] = targetIDs[i+1];
         for (int i = 0; i < ntargets; i++)

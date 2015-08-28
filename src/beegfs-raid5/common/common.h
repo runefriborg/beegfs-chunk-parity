@@ -5,6 +5,13 @@
 
 #include "progress_reporting.h"
 
+#if !defined(_GIT_COMMIT)
+#error "No git commit defined - did you mess with the build process?"
+#define GIT_VERSION 0x0
+#else
+#define GIT_VERSION _GIT_COMMIT
+#endif
+
 #define MODIFY_EVENT 'm'
 #define UNLINK_EVENT 'd'
 
@@ -30,7 +37,7 @@ typedef struct {
     ProgressSample *sample;
 } TaskInfo;
 
-typedef struct { int id, rank; } Target;
+typedef struct { int id, rank; unsigned version; } Target;
 typedef struct {
     int ntargets;
     Target targetIDs[MAX_STORAGE_TARGETS];
