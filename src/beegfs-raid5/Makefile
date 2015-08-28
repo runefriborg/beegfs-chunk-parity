@@ -1,6 +1,6 @@
 include ../beegfs-conf.sh
 
-GIT_COMMIT=0x`git rev-parse --short=8 HEAD`
+GIT_COMMIT=0x$(shell git rev-parse --short=8 HEAD)
 CC=mpicc
 CPPFLAGS?=-Wall -Wextra -pedantic -std=gnu99 -I$(CONF_LEVELDB_INCLUDEPATH) -g -O0
 CPPFLAGS+=-D_GIT_COMMIT=${GIT_COMMIT}
