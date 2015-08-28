@@ -46,7 +46,7 @@ int rank2st[MAX_STORAGE_TARGETS*2+1];
 static
 void send_sync_message_to(int recieving_rank, int msg_size, void *msg)
 {
-    MPI_Ssend(msg, msg_size, MPI_BYTE, recieving_rank, 0, MPI_COMM_WORLD);
+    MPI_Send(msg, msg_size, MPI_BYTE, recieving_rank, 0, MPI_COMM_WORLD);
 }
 
 static
