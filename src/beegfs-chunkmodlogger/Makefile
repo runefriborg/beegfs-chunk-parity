@@ -6,11 +6,8 @@ chunkmod_intercept: chunkmod_intercept.c
 
 parsestdin: parsestdin.c
 	$(CC) -o parsestdin{,.c}
-		
-gen-chunkmod-filelist-mpi: gen-chunkmod-filelist-mpi.c
-	mpicc -o gen-chunkmod-filelist-mpi{,.c}
 
-../../bin/audit-find-between: gen-chunkmod-filelist.py
+../../bin/bp-find-chunks-changed-between: gen-chunkmod-filelist.py
 	cp $^ $@
 
 install: chunkmod_intercept.so

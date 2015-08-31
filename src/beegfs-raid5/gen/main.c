@@ -563,7 +563,7 @@ int main(int argc, char **argv)
         if (strcmp(operation, "complete") == 0)
             snprintf(cmd_buf, sizeof(cmd_buf), "bp-find-all-chunks %s/chunks", store_dir);
         else if (strcmp(operation, "partial") == 0)
-            snprintf(cmd_buf, sizeof(cmd_buf), "audit-find-between --from %s --to %s --store %s/chunks", timestamp_a, timestamp_b, store_dir);
+            snprintf(cmd_buf, sizeof(cmd_buf), "bp-find-chunks-changed-between --from %s --to %s --store %s/chunks", timestamp_a, timestamp_b, store_dir);
         else
             strcpy(cmd_buf, "cat /dev/null");
         slave = popen(cmd_buf, "r");
