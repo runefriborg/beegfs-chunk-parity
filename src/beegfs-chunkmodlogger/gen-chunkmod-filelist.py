@@ -52,7 +52,7 @@ def write_to_stdout():
         assert len(type) is 1
         type_b  = struct.pack('<Q',long(ord(type)))
 
-        sys.stdout.write(time_b+size_b+type_b+len_b+path+'\0')
+        sys.stdout.write(time_b+size_b+type_b+len_b+path)
 
 def insert(entries):
     ''' Weed out all but the newest entry for each chunk.
@@ -73,6 +73,7 @@ def parse(file,store,lowerbound,upperbound):
           that input is sorted by timestamp
     '''
 
+    start = len(store)
     valid_entries = []
     for entry in file:
         timestamp,type,path = entry.strip().split(' ')
@@ -86,7 +87,7 @@ def parse(file,store,lowerbound,upperbound):
                     size = 0
             else:
                 size = 0
-            valid_entries.append((timestamp,type,path,size))
+            valid_entries.append((timestamp,type,path[start:],size))
 
     return valid_entries
 

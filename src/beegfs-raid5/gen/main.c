@@ -316,6 +316,7 @@ void feed_targets_with(FILE *input_file, unsigned ntargets)
                 break;
             }
             const char *path = bufp + 4*sizeof(uint64_t);
+            assert(path[0] != '/' && "paths must be relative to chunk-dir");
             unsigned st = (simple_hash(path, len_of_path)) % ntargets;
             push_to_target(
                     st,
@@ -563,7 +564,7 @@ int main(int argc, char **argv)
         if (strcmp(operation, "complete") == 0)
             snprintf(cmd_buf, sizeof(cmd_buf), "bp-find-all-chunks %s/chunks", store_dir);
         else if (strcmp(operation, "partial") == 0)
-            snprintf(cmd_buf, sizeof(cmd_buf), "bp-find-chunks-changed-between --from %s --to %s --store %s/chunks", timestamp_a, timestamp_b, store_dir);
+            snprintf(cmd_buf, sizeof(cmd_buf), "bp-find-chunks-changed-between --from %s --to %s --store %s/chunks/", timestamp_a, timestamp_b, store_dir);
         else
             strcpy(cmd_buf, "cat /dev/null");
         slave = popen(cmd_buf, "r");
