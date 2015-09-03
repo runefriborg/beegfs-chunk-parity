@@ -16,6 +16,7 @@
 #include <stdbool.h>
 #include <limits.h>
 
+
 //Stole these from asm-generic/fcntl.h
 //#define O_WRONLY        00000001
 //#define O_RDWR          00000002
@@ -30,6 +31,16 @@
 
 
 #define DEBUG true
+
+
+/* Operations for the `flock' call.  */
+#define	LOCK_SH	1	/* Shared lock.  */
+#define	LOCK_EX	2 	/* Exclusive lock.  */
+#define	LOCK_UN	8	/* Unlock.  */
+
+/* Apply or remove an advisory lock, according to OPERATION,
+   on the file FD refers to.  */
+extern int flock (int __fd, int __operation);
 
 
 char *open_files[MAX_OPEN_FILES];
@@ -81,8 +92,10 @@ void write_log(const char *format,...)
 	/* 1. Check whether or not we should start a new file. */
 	if((time(NULL)-LOGROTATE) > log_create_t)
 	{
-		if(log_fd != NULL)
+		if(log_fd != NULL){
+                        flock(fileno(log_fd),LOCK_UN);
 			fclose(log_fd);
+                }
 		log_fd = NULL;
 	}
 	/* 2. Make sure we have an open file to write to */
@@ -98,8 +111,11 @@ void write_log(const char *format,...)
 		log_fd = fopen(rand_log_name,"a");
 
 		// TODO: make beegfs crash with file-open-error?
-		if(log_fd == NULL)
+		if(log_fd == NULL){
 			debug("Couldn't create file %s.",rand_log_name);
+                }
+
+                flock(fileno(log_fd),LOCK_EX);
 
 	}
 
