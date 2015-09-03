@@ -4,6 +4,7 @@
 import os
 import sys
 import time
+import fcntl
 import struct
 import optparse
 
@@ -101,7 +102,7 @@ def construct_chunkmod_data(path,store,lowerbound,upperbound):
 
     write_to_stdout()
 
-def cleanup_until(until):
+def cleanup_until(until, store):
     ''' When a log entry is being written it will update the st_mtime of a log
     file. To gather all relevant log files contaning log entries up until a
     given point in time, can therefore be done only by looking at the st_mtime
@@ -110,8 +111,19 @@ def cleanup_until(until):
     #Get all files whichs stat.st_mtime is less than until
     filelist = get_files(FILEMOD_PATH,0,until)
     for file in filelist:
-        print file
-        #os.remove(file)
+        # I assume the only IOError we are going to get is on the lock
+        # If there are some other errors everything will likely be fixed the
+        # next time we run a cleanup.
+        try:
+            f = open(file)
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            if store in f.read(500):
+                #print file
+                os.remove(file)
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            f.close()
+        except IOError:
+            pass
 
 
 def main():
@@ -143,13 +155,17 @@ Filemod log that has been processed can be removed by via --cleanup-until.""",
 
     (options, args) = parser.parse_args()
 
-    if options.from_t is not None and options.to_t is not None and options.store is not None:
-        if options.store[0] != "/":
-            options.store = "/"+options.store
-        construct_chunkmod_data(FILEMOD_PATH,options.store,options.from_t,options.to_t)
+    if not options.store:
+        parser.error("No store given")
+        sys.exit(1)
 
+    if options.store[0] != "/":
+        options.store = "/"+options.store
+
+    if options.from_t is not None and options.to_t is not None:
+        construct_chunkmod_data(FILEMOD_PATH,options.store,options.from_t,options.to_t)
     elif options.clean_t is not None:
-        cleanup_until(options.clean_t)
+        cleanup_until(options.clean_t, options.store)
     else:
         print parser.usage
 
