@@ -97,6 +97,7 @@ if flock --exclusive --nonblock 500; then
         fi
     fi
 
+    PATH="`pwd`:$PATH"
     base_dir=`cat /opt/$dname/etc/basedir`
     mkdir --parents "/opt/$dname/spool"
     echo `hostname -s` > /opt/$dname/run/hosts
@@ -106,6 +107,7 @@ if flock --exclusive --nonblock 500; then
     $mpirun ./bp-parity-gen $operation $base_dir $last_timestamp $timestamp /opt/$dname/spool/data /opt/$dname/spool/db
 
     echo $timestamp > $last_successful_timestamp_file
+    $mpirun ./bp-find-chunks-changed-between --cleanup-until="$timestamp" --store="$base_dir"
 else
     echo "** Error: Can't acquire lock, is the program already running?" 1>&2
 fi
