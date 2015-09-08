@@ -6,7 +6,7 @@ APP_BIN=$(grep APP_BIN=      /etc/init.d/beegfs-storage | cut -d= -f 2)
 BEEGFS_STORAGE_BIN=$(eval echo $APP_BIN)
 
 # If the wrapper already exists, exit
-test -f "${BEEGFS_STORAGE_BIN}.bin" || mv "$BEEGFS_STORAGE_BIN" "$BEEGFS_STORAGE_BIN.bin"
+(file "${BEEGFS_STORAGE_BIN}" | grep -q ELF) && mv "$BEEGFS_STORAGE_BIN" "$BEEGFS_STORAGE_BIN.bin"
 
 cat > "$BEEGFS_STORAGE_BIN" << EOF
 #!/bin/bash
