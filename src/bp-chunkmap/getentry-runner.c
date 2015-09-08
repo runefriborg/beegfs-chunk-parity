@@ -131,7 +131,7 @@ int main(int argc, char *argv[]) {
     /* Init db */
     db = mutexleveldb_create2(atol(argv[1]), argv[2]);
   } else {
-    printf("Usage: getentry-runner <filecount> <leveldb filename>\n");
+    printf("Usage: bp-cm-getentry <filecount> <leveldb filename>\n");
     exit(1);
   }
  

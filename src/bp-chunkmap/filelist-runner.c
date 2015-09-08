@@ -138,7 +138,7 @@ int main(int argc, char *argv[]) {
     dir= realpath(dir, NULL);
     SKIPCHARS=atoi(argv[1]);
   } else {
-    printf("Usage: filelist-runner <skipNchars> <directory>\n");
+    printf("Usage: bp-cm-filelist <skipNchars> <directory>\n");
     exit(1);
   }
 

@@ -30,7 +30,7 @@ done
 if [ failed_params == 1 ] || [ $# -eq 0 ] || [ "$DIR" == "" ] || [ "$LEVELDB" == "" ]; then
         cat <<EOF
 Usage:
-  beegfs-chunkmap -d <directory to map> -o <leveldb output file> [-c <cache directory>]
+  bp-chunkmap -d <directory to map> -o <leveldb output file> [-c <cache directory>]
 
 Parameters explained:
   -d    Directory located on a BeeGFS mount
@@ -56,7 +56,7 @@ cd ${CACHEDIR}
 echo "Creating file lists ${CACHEDIR}/output.*"
 
 # Create file lists
-${BINDIR}/filelist-runner ${#CONF_BEEGFS_MOUNT} "${DIR}"
+${BINDIR}/bp-cm-filelist ${#CONF_BEEGFS_MOUNT} "${DIR}"
 
 if [ ! "$?" -eq 0 ]; then
         echo "Aborted! Check system consistency!"
@@ -71,7 +71,7 @@ echo "Total count: ${FILES}"
 echo "Write entries to LevelDB: ${LEVELDB}"
 
 # Get entries and create db
-LD_LIBRARY_PATH=${CONF_LEVELDB_LIBPATH} ${BINDIR}/getentry-runner ${FILES} ${LEVELDB}
+LD_LIBRARY_PATH=${CONF_LEVELDB_LIBPATH} ${BINDIR}/bp-cm-getentry ${FILES} ${LEVELDB}
 
 if [ ! "$?" -eq 0 ]; then
         echo "Aborted! Check system consistency!"
