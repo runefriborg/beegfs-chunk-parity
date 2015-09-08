@@ -16,7 +16,7 @@ BEEGFS_STORAGE_BIN=$(eval echo $APP_BIN)
 cat > "$BEEGFS_STORAGE_BIN" << EOF
 #!/bin/bash
 
-LD_PRELOAD="/usr/lib64/chunkmod_intercept.so" exec -a "\$0" "\$0.bin" \$@
+LD_PRELOAD="/usr/lib64/bp-changelogger.so" exec -a "\$0" "\$0.bin" \$@
 EOF
 
 chmod +x "$BEEGFS_STORAGE_BIN"
