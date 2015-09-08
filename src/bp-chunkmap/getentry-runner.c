@@ -13,7 +13,7 @@
 
 #undef PROFILE
 #define GETENTRY_THREADS 32
-#define GETENTRY_COMMAND   "cat output.%d | fhgfs-ctl --getentryinfo --nomappings --unmounted -"
+#define GETENTRY_COMMAND   "cat output.%d | beegfs-ctl --getentryinfo --nomappings --unmounted -"
 #define PATH_IDENTIFIER    "Path: "
 #define ENTRYID_IDENTIFIER "EntryID: "
 #define LINE_BUFSIZE PATH_MAX

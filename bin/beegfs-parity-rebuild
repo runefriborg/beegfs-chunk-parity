@@ -78,10 +78,14 @@ if flock --exclusive --nonblock 500; then
     cat "$hostfile" >> "/opt/$dname/run/hosts"
     mpirun="mpirun --hostfile /opt/$dname/run/hosts"
     $mpirun ./bp-parity-rebuild $rebuild_target $base_dir $spool/data /tmp/$base_dir-corrupted_chunks /opt/$dname/spool/db
+
     # Collect list of potentially corrupt chunks
     for h in `cat /opt/$dname/etc/hosts`; do
         ssh $h cat /tmp/$base_dir-corrupted_chunks
     done | sort -u > $spool/corrupted_chunks
+    map_dir="`mktemp --directory`"
+    ./bp-chunkmap -d /faststorage -o "$map_dir" -c "`mktemp --directory`"
+    cat "$spool/corrupted_chunks" | cut -d/ -f5- | ./bp-rename-corrupt-files "$map_dir"
 else
     echo "** Error: Can't acquire lock, is the program already running?" 1>&2
 fi
