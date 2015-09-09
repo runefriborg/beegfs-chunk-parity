@@ -24,6 +24,10 @@
 #define NO_P UINT64_C(0xFF)
 #define P_IS_INVALID(loc) (GET_P(loc) == NO_P || TEST_BIT((loc),GET_P(loc)))
 
+/* The database stores FileInfo elements as values. If the structure (or the
+ * interpretation of it) is changed you must bump the DB_VERSION field to make
+ * sure we don't read incompatible versions of the database. */
+#define DB_VERSION 1
 typedef struct {
     int64_t timestamp;
     uint64_t locations;

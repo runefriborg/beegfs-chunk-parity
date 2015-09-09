@@ -3,10 +3,14 @@
 #include <stdio.h>
 #include <memory.h>
 #include <assert.h>
+#include <err.h>
 
 #include <leveldb/c.h>
 
 #include "persistent_db.h"
+
+/* Not important what the key is, it just can't collide with a chunkname */
+#define FORMAT_VERSION_KEY "?db_version"
 
 struct PersistentDB {
     leveldb_options_t *options;
@@ -16,7 +20,7 @@ struct PersistentDB {
     leveldb_t *db;
 };
 
-PersistentDB* pdb_init(const char *db_folder)
+PersistentDB* pdb_init(const char *db_folder, uint64_t expected_version)
 {
     leveldb_cache_t *cache = leveldb_cache_create_lru(100*1024*1024);
     leveldb_options_t *db_options = leveldb_options_create();
@@ -36,12 +40,38 @@ PersistentDB* pdb_init(const char *db_folder)
         return NULL;
     }
     leveldb_free(errmsg);
+
     PersistentDB *res = calloc(1, sizeof(PersistentDB));
     res->options = db_options;
     res->cache = cache;
     res->wopts = write_options;
     res->ropts = read_options;
     res->db = db;
+
+    size_t version_len;
+    uint64_t *version = leveldb_get(
+            db,
+            read_options,
+            FORMAT_VERSION_KEY, strlen(FORMAT_VERSION_KEY),
+            &version_len,
+            &errmsg);
+    leveldb_free(errmsg);
+    /* New database with no version field */
+    if (version == NULL) {
+        leveldb_put(
+                db,
+                write_options,
+                FORMAT_VERSION_KEY, strlen(FORMAT_VERSION_KEY),
+                (const char *)&expected_version, sizeof(expected_version),
+                &errmsg);
+        leveldb_free(errmsg);
+    }
+    else if (version_len != sizeof(*version))
+        errx(1, "Corrupt version field in database");
+    else if (*version != expected_version)
+        errx(1, "Incompatible DB (found: %llu, expected: %llu)",
+                *version, expected_version);
+
     return res;
 }
 
@@ -111,4 +141,3 @@ void pdb_iterate(const PersistentDB *pdb, ProcessFileInfos f)
     }
     leveldb_iter_destroy(iter);
 }
-

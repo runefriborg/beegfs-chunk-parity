@@ -205,7 +205,7 @@ int main(int argc, char **argv)
 
     if (mpi_rank != 0)
     {
-        PersistentDB *pdb = pdb_init(db_folder);
+        PersistentDB *pdb = pdb_init(db_folder, DB_VERSION);
         pdb_iterate(pdb, do_file);
         pdb_term(pdb);
 

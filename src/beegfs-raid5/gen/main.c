@@ -642,7 +642,7 @@ int main(int argc, char **argv)
     PROF_END(sort_by_size);
 
     PROF_START(load_db);
-    PersistentDB *pdb = pdb_init(db_folder);
+    PersistentDB *pdb = pdb_init(db_folder, DB_VERSION);
     PROF_END(load_db);
 
     PROF_START(phase2);
