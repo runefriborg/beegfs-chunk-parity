@@ -71,6 +71,8 @@ PersistentDB* pdb_init(const char *db_folder, uint64_t expected_version)
     else if (*version != expected_version)
         errx(1, "Incompatible DB (found: %llu, expected: %llu)",
                 *version, expected_version);
+    else
+        leveldb_free(version);
 
     return res;
 }
@@ -135,7 +137,7 @@ void pdb_iterate(const PersistentDB *pdb, ProcessFileInfos f)
         tmp_key[keylen] = '\0';
         size_t vallen;
         const char *val = leveldb_iter_value(iter, &vallen);
-        if (vallen == sizeof(FileInfo))
+        if (strcmp(tmp_key, FORMAT_VERSION_KEY) != 0 && vallen == sizeof(FileInfo))
             is_done = f(tmp_key, keylen, (const FileInfo*)val);
         leveldb_iter_next(iter);
     }
