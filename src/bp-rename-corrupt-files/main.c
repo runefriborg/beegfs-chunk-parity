@@ -4,6 +4,7 @@
 #include <limits.h>
 
 #include <leveldb/c.h>
+#define PREFIX "/faststorage/"
 
 int main(int argc, char **argv)
 {
@@ -39,12 +40,12 @@ int main(int argc, char **argv)
             continue;
         char filename0[PATH_MAX];
         char filename_fixed[PATH_MAX];
-        snprintf(filename0, sizeof(filename0), "%.*s", (int)filename_len, filename);
-        snprintf(filename_fixed, sizeof(filename_fixed), "%s.corrupt", filename0);
-#if 1
+        snprintf(filename0, sizeof(filename0), PREFIX "%.*s", (int)filename_len, filename);
+        snprintf(filename_fixed, sizeof(filename_fixed), "%s.CORRUPT", filename0);
+#if 0
         printf("rename %s %s\n", filename0, filename_fixed);
 #else
-        rename(filename, filename_fixed);
+        rename(filename0, filename_fixed);
 #endif
     }
 }
