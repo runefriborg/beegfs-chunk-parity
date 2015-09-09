@@ -57,6 +57,12 @@ fi
 mkdir --parents "/opt/$dname/run"
 mkdir --parents "/opt/$dname/spool"
 
+function collect_hostlist {
+    local full_hostlist="$1"
+    local store="$2"
+    cat "$full_hostlist" | xargs -n 1 -P 8 -I{} ssh {} "test -f $store/nodeID && hostname -s"
+}
+
 function check_beegfs_servers_online {
 #TODO: any other ways the servers can be down?
 if beegfs-check-servers | grep -q "UNREACHABLE\|failed"; then
@@ -98,11 +104,13 @@ if flock --exclusive --nonblock 500; then
     fi
 
     PATH="`pwd`:$PATH"
+    storage_nodes="/opt/$dname/etc/hosts"
+    hostfile="/opt/$dname/run/active_storage_nodes"
     base_dir=`cat /opt/$dname/etc/basedir`
-    mkdir --parents "/opt/$dname/spool"
+    collect_hostlist "$storage_nodes" "$base_dir" > "$hostfile"
     echo `hostname -s` > /opt/$dname/run/hosts
     # We need two ranks per host so we double it up
-    paste -d '\n' "/opt/$dname/etc/hosts" "/opt/$dname/etc/hosts" >> "/opt/$dname/run/hosts"
+    paste -d '\n' "$hostfile" "$hostfile" >> "/opt/$dname/run/hosts"
     mpirun="mpirun --hostfile /opt/$dname/run/hosts"
     $mpirun ./bp-parity-gen $operation $base_dir $last_timestamp $timestamp /opt/$dname/spool/data /opt/$dname/spool/db
 

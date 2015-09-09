@@ -439,6 +439,9 @@ int main(int argc, char **argv)
         for (int i = 1; i < 2*ntargets+1; i++)
             if (targetIDs[i].version != GIT_VERSION)
                 errx(1, "Version mismatch");
+        for (int i = 1; i < 2*ntargets+1; i+=2)
+            if (targetIDs[i].id != targetIDs[i+1].id)
+                errx(1, "All hosts must have two consecutive ranks");
         for (int i = 0; i < ntargets; i++)
             targetIDs[i] = targetIDs[2*i+1];
         int k = last_run.ntargets;
@@ -468,7 +471,8 @@ int main(int argc, char **argv)
     MPI_Bcast(rank2st, sizeof(rank2st), MPI_BYTE, 0, MPI_COMM_WORLD);
 
     if (mpi_rank == 0) {
-        write(last_run_fd, &last_run, sizeof(RunData));
+        if (write(last_run_fd, &last_run, sizeof(RunData)) == -1)
+            err(1, "Couldn't save storage-target to id mapping");
         close(last_run_fd);
     }
 

@@ -145,8 +145,7 @@ int main(int argc, char **argv)
             MPI_COMM_WORLD);
     if (mpi_rank == 0) {
         if (last_run.ntargets != ntargets) {
-            /* ERROR - new number of targets */
-            assert(0);
+            errx(1, "Wrong number of targets");
         }
         for (int i = 0; i < ntargets; i++)
             if (targetIDs[i].version != GIT_VERSION)
@@ -167,7 +166,7 @@ int main(int argc, char **argv)
             if (!found) {
                 /* ERROR - new target introduced */
                 printf(" > %d, %d\n", target.id, target.rank);
-                assert(0);
+                errx(1, "New targets can't be introduced in rebuilds");
             }
         }
         rank2st[0] = -1;
@@ -179,6 +178,11 @@ int main(int argc, char **argv)
     }
     MPI_Bcast(st2rank, sizeof(st2rank), MPI_BYTE, 0, MPI_COMM_WORLD);
     MPI_Bcast(rank2st, sizeof(rank2st), MPI_BYTE, 0, MPI_COMM_WORLD);
+
+    if (mpi_rank == 0) {
+        write(last_run_fd, &last_run, sizeof(RunData));
+        close(last_run_fd);
+    }
 
     PROF_END(init);
 
