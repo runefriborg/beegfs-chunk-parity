@@ -185,7 +185,7 @@ int main(int argc, char **argv)
     if (mpi_rank == 0)
         printf("%d(rank=%d)\n", rebuild_target, st2rank[rebuild_target]);
     else
-        hs.corrupt_files_fd = open(corrupt_list_file, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
+        hs.corrupt_files_fd = open(corrupt_list_file, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
 
     hs.fd_null = open("/dev/null", O_WRONLY);
     hs.fd_zero = open("/dev/zero", O_RDONLY);
