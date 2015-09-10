@@ -78,15 +78,15 @@ if flock --exclusive --nonblock 500; then
         exit 1
     fi
 
-    rebuild_target=`awk "/$rebuild_host/ {print FNR-1}" "$hostfile"`
     safe_host=`comm -13 <(echo $rebuild_host) "/opt/$dname/etc/hosts" | head -n 1`
     ssh $rebuild_host rm -rf $spool/db
     scp -pr $safe_host:$spool/db $rebuild_host:$spool/db
+    rebuild_id=`ssh "$rebuild_host" cat "$base_dir/targetNumID"`
 
     echo `hostname -s` > /opt/$dname/run/hosts
     cat "$hostfile" >> /opt/$dname/run/hosts
     mpirun="mpirun --hostfile /opt/$dname/run/hosts"
-    $mpirun ./bp-parity-rebuild $rebuild_target $base_dir $spool/data /tmp/$base_dir-corrupted_chunks $spool/db
+    $mpirun ./bp-parity-rebuild $rebuild_id $base_dir $spool/data /tmp/$base_dir-corrupted_chunks $spool/db
 
     # Collect list of potentially corrupt chunks
     for h in `cat /opt/$dname/etc/hosts`; do

@@ -27,7 +27,7 @@
     ((t_##name##_1.tv_sec - t_##name##_0.tv_sec) * 1.0 \
     + (t_##name##_1.tv_nsec - t_##name##_0.tv_nsec) * 1e-9)
 
-static int rebuild_target;
+static int rebuild_target = -1;
 static int mpi_rank;
 static int mpi_world_size;
 int st2rank[MAX_STORAGE_TARGETS];
@@ -100,7 +100,7 @@ int main(int argc, char **argv)
     MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &mpi_world_size);
 
-    rebuild_target = atoi(argv[1]);
+    int rebuild_id = atoi(argv[1]);
     const char *store_dir = argv[2];
     const char *data_file = argv[3];
     const char *corrupt_list_file = argv[4];
@@ -108,9 +108,6 @@ int main(int argc, char **argv)
 
     int ntargets = mpi_world_size - 1;
     if (ntargets > MAX_STORAGE_TARGETS)
-        return 1;
-
-    if (rebuild_target < 0 || rebuild_target > ntargets)
         return 1;
 
     int store_fd = open(store_dir, O_DIRECTORY | O_RDONLY);
@@ -172,10 +169,16 @@ int main(int argc, char **argv)
         rank2st[0] = -1;
         for (int i = 0; i < ntargets; i++)
         {
+            if (last_run.targetIDs[i].id == rebuild_id)
+                rebuild_target = i;
             st2rank[i] = last_run.targetIDs[i].rank;
             rank2st[st2rank[i]] = i;
         }
+
+        if (rebuild_target == -1)
+            errx(1, "rebuild_id not found");
     }
+    MPI_Bcast(&rebuild_target, sizeof(rebuild_target), MPI_BYTE, 0, MPI_COMM_WORLD);
     MPI_Bcast(st2rank, sizeof(st2rank), MPI_BYTE, 0, MPI_COMM_WORLD);
     MPI_Bcast(rank2st, sizeof(rank2st), MPI_BYTE, 0, MPI_COMM_WORLD);
 
@@ -183,6 +186,9 @@ int main(int argc, char **argv)
         write(last_run_fd, &last_run, sizeof(RunData));
         close(last_run_fd);
     }
+
+    if (rebuild_target < 0 || rebuild_target > ntargets)
+        return 1;
 
     PROF_END(init);
 
