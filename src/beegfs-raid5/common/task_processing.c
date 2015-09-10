@@ -284,6 +284,8 @@ void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, HostState
 
     size_t buffer_size = MIN(FILE_TRANSFER_BUFFER_SIZE, data_to_send);
     uint8_t *data = malloc(FILE_TRANSFER_BUFFER_SIZE);
+    if (have_had_error != 0)
+        memset(data, 0, buffer_size);
 
     size_t data_sent = 0;
     while (data_sent < data_to_send)
