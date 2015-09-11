@@ -70,7 +70,6 @@ if flock --exclusive --nonblock 500; then
     hostfile="/opt/$dname/run/active_storage_nodes"
     base_dir=`cat /opt/$dname/etc/basedir`
     spool="/opt/$dname/spool/"
-    mkdir --parents $spool
     collect_hostlist "$storage_nodes" "$base_dir" > "$hostfile"
 
     if ! grep -q "$rebuild_host" "$hostfile" ; then
@@ -78,7 +77,7 @@ if flock --exclusive --nonblock 500; then
         exit 1
     fi
 
-    safe_host=`comm -13 <(echo $rebuild_host) "/opt/$dname/etc/hosts" | head -n 1`
+    safe_host=`comm -13 <(echo $rebuild_host) "$hostfile" | head -n 1`
     ssh $rebuild_host rm -rf $spool/db
     scp -pr $safe_host:$spool/db $rebuild_host:$spool/db
     rebuild_id=`ssh "$rebuild_host" cat "$base_dir/targetNumID"`
@@ -89,7 +88,7 @@ if flock --exclusive --nonblock 500; then
     $mpirun ./bp-parity-rebuild $rebuild_id $base_dir $spool/data /tmp/$base_dir-corrupted_chunks $spool/db
 
     # Collect list of potentially corrupt chunks
-    for h in `cat /opt/$dname/etc/hosts`; do
+    for h in `cat "$hostfile"`; do
         ssh $h cat /tmp/$base_dir-corrupted_chunks
     done | sort -u > $spool/corrupted_chunks
     map_dir="`mktemp --directory`"
