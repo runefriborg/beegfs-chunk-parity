@@ -162,6 +162,9 @@ int openat64(int dirfd, const char *pathname, int flags, mode_t mode)
 
 	debug("openat64() fd='%d', path='%s/%s'. threadid='%08x' flags='%d' mode='%lu'.\n",fd, dirpath,pathname,(unsigned int)pthread_self(),flags,(unsigned long)mode);
 
+	if (flags == 0)
+		return fd;
+
 	char *path = &pathbuf[MAX_PATH_LENGTH*(int)fd];
 	path = strncpy(path, pathname,MAX_PATH_LENGTH);
 
