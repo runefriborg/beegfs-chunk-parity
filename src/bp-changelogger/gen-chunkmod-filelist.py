@@ -119,7 +119,10 @@ def cleanup_until(until, store):
             fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             if store in f.read(500):
                 #print file
-                os.remove(file)
+                try:
+                    os.remove(file)
+                except IOError:
+                    pass
             fcntl.flock(f.fileno(), fcntl.LOCK_UN)
             f.close()
         except IOError:
