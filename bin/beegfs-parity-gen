@@ -60,7 +60,7 @@ mkdir --parents "/opt/$dname/spool"
 function collect_hostlist {
     local full_hostlist="$1"
     local store="$2"
-    cat "$full_hostlist" | xargs -n 1 -P 8 -I{} ssh {} "test -f $store/nodeID && hostname -s"
+    cat "$full_hostlist" | xargs -n 1 -P 8 -I{} ssh {} "test -f $store/targetNumID && hostname -s"
 }
 
 function check_beegfs_servers_online {
