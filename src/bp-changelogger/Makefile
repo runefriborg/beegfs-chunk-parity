@@ -1,5 +1,5 @@
 bp-changelogger.so: changelogger.c
-	$(CC) -fPIC -Wall -shared -o $@ $^ -ldl
+	$(CC) -fPIC -Wall -O2 -shared -o $@ $^ -ldl
 
 parsestdin: parsestdin.c
 	$(CC) -o parsestdin{,.c}
