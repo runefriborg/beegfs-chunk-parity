@@ -10,7 +10,7 @@ import optparse
 
 chunks_modified = {}
 
-FILEMOD_PATH = "/dev/shm/chunkmod_intercept"
+FILEMOD_PATH = "/dev/shm/beegfs-changelog"
 
 def get_files(path,lowerbound,upperbound):
     f = []

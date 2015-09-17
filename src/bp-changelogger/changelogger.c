@@ -17,17 +17,13 @@
 #include <limits.h>
 
 
-//Stole these from asm-generic/fcntl.h
-//#define O_WRONLY        00000001
-//#define O_RDWR          00000002
-
 #define MAX_OPEN_FILES 65535
 #define MAX_PATH_LENGTH 512
 #define LOGROTATE 86400
-#define LOGFOLDER      "/dev/shm/chunkmod_intercept/"
+#define LOGFOLDER      "/dev/shm/beegfs-changelog/"
 #define LOGFILE_PREFIX "close_logging"
-#define DEBUGLOG       "/var/log/chunkmod-logs/chunkmod-intercept.log"
-#define DEBUGDIR       "/var/log/chunkmod-logs"
+#define DEBUGLOG       "/var/log/beegfs-changelog/chunkmod-intercept.log"
+#define DEBUGDIR       "/var/log/beegfs-changelog"
 
 
 #define DEBUG true
@@ -57,6 +53,17 @@ pthread_mutex_t lock;
 int is_set(int bitmask,int to_check_for)
 {
 	return to_check_for == (bitmask & to_check_for);
+}
+
+inline void init_debug()
+{
+#ifdef DEBUG
+	int ret = mkdir(DEBUGDIR, S_IRUSR | S_IWUSR | S_IXUSR);
+	if(ret != 0 && errno != EEXIST) {
+		printf("Could not create debug-dir '%s'.\n", DEBUGDIR);
+		return;
+	}
+#endif
 }
 
 inline void debug(const char *format,...)
@@ -226,14 +233,7 @@ void init(void)
 {
 	pthread_mutex_init(&lock,NULL);
 
-#ifdef DEBUG
-	int ret = mkdir(DEBUGDIR, S_IRUSR | S_IWUSR | S_IXUSR);
-	if(ret != 0 && errno != EEXIST) {
-		printf("Could not create debug-dir '%s'.\n", DEBUGDIR);
-		return;
-	}
-#endif
-
+	init_debug();
 	debug("-----------\n");
 	debug("Creating log-dir...\n");
 

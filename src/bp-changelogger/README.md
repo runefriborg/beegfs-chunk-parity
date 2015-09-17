@@ -22,7 +22,7 @@ To install the logger module:
 The `beegfs-storage` executable will be replaced with a wrapper that preloads
 the correct shared object.
 
-Chunkmods will be logged to `/dev/shm/chunkmod_intercept/`
+Chunkmods will be logged to `/dev/shm/beegfs-changelog/`
 
 Run `gen-chunkmod-filelist.py -f 0 -t 9999999999 | parsestdin` to parse and
 print  all logged so far.
