@@ -18,7 +18,6 @@
 #define MAX_PATH_LENGTH 512
 #define CHANGELOGROTATE 86400
 #define CHANGELOGFOLDER      "/dev/shm/beegfs-changelog/"
-#define CHANGELOGFILE_PREFIX "close_logging"
 #define LOG                  "/var/log/beegfs-changelog/intercept.log"
 #define ERRORLOG             "/var/log/beegfs-changelog/error.log"
 #define LOGDIR               "/var/log/beegfs-changelog"
@@ -161,7 +160,7 @@ void write_changelog(const char *format,...) {
     asprintf(&rand_log_name,
 	     "%s/%s-%ld-threadid=%08x",
 	     CHANGELOGFOLDER,
-	     CHANGELOGFILE_PREFIX,
+	     storage_id,
 	     log_create_t,
 	     (unsigned int)pthread_self());
     log_fd = fopen(rand_log_name,"a");
