@@ -199,11 +199,9 @@ inline void init_once(int dirfd) {
     }
 
     { // Retrieve a storage id for logfile seperation
-      char *storage_id_tmp = malloc(sizeof(char)*PATH_MAX);
-      strncpy(storage_id_tmp, dirpath_tmp, strlen(dirpath_tmp)-8);
-      *(storage_id_tmp+(strlen(dirpath_tmp)-8)) = '\0';
+      char *storage_id_tmp = strdup(dirpath_tmp);
       char * p = storage_id_tmp;
-      while (p != NULL) {
+      while (*p != '\0') {
 	if (*p == '/') {
 	  *p = '-';
 	}
@@ -272,11 +270,11 @@ int (*_original_close)(int fd);
 int close(int fd);
 
 int close(int fd) {
-  if(dirpath == NULL) {
-    errorlog("close() dirpath == NULL on close. Shouldn't happen\n");
-  }
-
   if(open_files[fd] != NULL) {
+
+    if(dirpath == NULL) {
+      errorlog("close() dirpath == NULL on close. Shouldn't happen\n");
+    }
 
     char filename[512];
     snprintf(filename,512,"%s/%s",dirpath,open_files[fd]);
