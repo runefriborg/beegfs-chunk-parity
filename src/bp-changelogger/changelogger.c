@@ -83,7 +83,7 @@ static void errorlog(const char *format,...) {
   char msg[200] = {0};
   va_list args;
   va_start(args, format);
-  vsprintf(msg, format, args);
+  vsnprintf(msg, sizeof(msg), format, args);
   va_end(args);
   write_log_msg(ERRORLOG, msg);
 }
@@ -92,7 +92,7 @@ static void writelog(const char *format,...) {
   char msg[200] = {0};
   va_list args;
   va_start(args, format);
-  vsprintf(msg, format, args);
+  vsnprintf(msg, sizeof(msg), format, args);
   va_end(args);
   write_log_msg(LOG, msg);
 }
@@ -100,32 +100,14 @@ static void writelog(const char *format,...) {
 
 inline void debuglog(const char *format,...) {
 #ifdef DEBUG
-  FILE *f;
-  char logfilename[MAX_PATH_LENGTH];
-  pthread_mutex_lock(&lock);
-
-  if (storage_id == NULL) {
-    f = fopen(LOG,"a");
-  } else {
-    snprintf(logfilename, MAX_PATH_LENGTH,"%s%s",LOG,storage_id);
-    f = fopen(logfilename,"a");
-  }
-
-  if (f != NULL) {
-    struct timeval tv;
-    gettimeofday(&tv,NULL);
-
-    // write microtimestamp
-    fprintf(f, "%lu.%lu DEBUG ",(unsigned long)tv.tv_sec,(unsigned long)tv.tv_usec);
-
-    // write message
-    va_list args;
-    va_start( args, format );
-    vfprintf( f, format, args );
-    va_end( args );
-    fclose(f);
-  }
-  pthread_mutex_unlock(&lock);
+  char msg_a[200] = {0};
+  char msg[200] = {0};
+  va_list args;
+  va_start(args, format);
+  vsnprintf(msg_a, sizeof(msg_a), format, args);
+  va_end(args);
+  snprintf(msg, sizeof(msg), "DEBUG %s", msg_a);
+  write_log_msg(LOG, msg);
 #endif
 }
 
