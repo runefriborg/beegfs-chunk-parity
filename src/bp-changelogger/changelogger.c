@@ -43,7 +43,7 @@ char *storage_id = NULL;
 __thread FILE *log_fd = NULL;
 __thread time_t log_create_t = 0;
 __thread char *rand_log_name = NULL;
-pthread_mutex_t lock;
+pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
 /* function pointers to the original functions */
 static int (*_original_openat)(int dirfd, const char *pathname, int flags, mode_t mode);
@@ -246,8 +246,6 @@ int close(int fd) {
 }
 
 static void __attribute__((constructor)) init(void) {
-  pthread_mutex_init(&lock,NULL);
-
   initlog();
   writelog("-----------\n");
   writelog("Initialising changelog folder...\n");
