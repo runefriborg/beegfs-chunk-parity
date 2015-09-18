@@ -45,6 +45,11 @@ __thread time_t log_create_t = 0;
 __thread char *rand_log_name = NULL;
 pthread_mutex_t lock;
 
+/* function pointers to the original functions */
+static int (*_original_openat)(int dirfd, const char *pathname, int flags, mode_t mode);
+static int (*_original_unlinkat)(int dirfd, const char *pathname, int flags);
+static int (*_original_close)(int fd);
+
 inline void initlog() {
   int ret = mkdir(LOGDIR, S_IRUSR | S_IWUSR | S_IXUSR);
   if(ret != 0 && errno != EEXIST) {
@@ -53,62 +58,43 @@ inline void initlog() {
   }
 }
 
-inline void errorlog(const char *format,...) {
+static void write_log_msg(const char *basename, const char *msg) {
   FILE *f;
   char logfilename[MAX_PATH_LENGTH];
   pthread_mutex_lock(&lock);
 
   if (storage_id == NULL) {
-    f = fopen(ERRORLOG,"a");
+    f = fopen(basename, "a");
   } else {
-    snprintf(logfilename, MAX_PATH_LENGTH,"%s%s",ERRORLOG,storage_id);
-    f = fopen(logfilename,"a");
+    snprintf(logfilename, MAX_PATH_LENGTH, "%s%s", basename, storage_id);
+    f = fopen(logfilename, "a");
   }
 
   if (f != NULL) {
     struct timeval tv;
-    gettimeofday(&tv,NULL);
-
-    // write microtimestamp
-    fprintf(f, "%lu.%lu ",(unsigned long)tv.tv_sec,(unsigned long)tv.tv_usec);
-
-    // write message
-    va_list args;
-    va_start( args, format );
-    vfprintf( f, format, args );
-    va_end( args );
+    gettimeofday(&tv, NULL);
+    fprintf(f, "%lu.%lu %s", (unsigned long)tv.tv_sec, (unsigned long)tv.tv_usec, msg);
     fclose(f);
   }
   pthread_mutex_unlock(&lock);
 }
 
-inline void writelog(const char *format,...) {
-  FILE *f;
-  char logfilename[MAX_PATH_LENGTH];
-  pthread_mutex_lock(&lock);
+static void errorlog(const char *format,...) {
+  char msg[200] = {0};
+  va_list args;
+  va_start(args, format);
+  vsprintf(msg, format, args);
+  va_end(args);
+  write_log_msg(ERRORLOG, msg);
+}
 
-  if (storage_id == NULL) {
-    f = fopen(LOG,"a");
-  } else {
-    snprintf(logfilename, MAX_PATH_LENGTH,"%s%s",LOG,storage_id);
-    f = fopen(logfilename,"a");
-  }
-
-  if (f != NULL) {
-    struct timeval tv;
-    gettimeofday(&tv,NULL);
-
-    // write microtimestamp
-    fprintf(f, "%lu.%lu ",(unsigned long)tv.tv_sec,(unsigned long)tv.tv_usec);
-
-    // write message
-    va_list args;
-    va_start( args, format );
-    vfprintf( f, format, args );
-    va_end( args );
-    fclose(f);
-  }
-  pthread_mutex_unlock(&lock);
+static void writelog(const char *format,...) {
+  char msg[200] = {0};
+  va_list args;
+  va_start(args, format);
+  vsprintf(msg, format, args);
+  va_end(args);
+  write_log_msg(LOG, msg);
 }
 
 
@@ -143,7 +129,7 @@ inline void debuglog(const char *format,...) {
 #endif
 }
 
-
+static
 void write_changelog(const char *format,...) {
   /* 1. Check whether or not we should start a new file. */
   if((time(NULL)-CHANGELOGROTATE) > log_create_t) {
@@ -182,7 +168,7 @@ void write_changelog(const char *format,...) {
   fflush(log_fd);
 }
 
-inline void init_once(int dirfd) {
+static void init_once(int dirfd) {
   /* On the first openat64 intercepted, lookup the path of dirfd on store
    * it.
    */
@@ -217,10 +203,6 @@ inline void init_once(int dirfd) {
   }
 }
 
-
-int (*_original_openat)(int dirfd, const char *pathname, int flags, mode_t mode);
-int openat64(int dirfd, const char *pathname, int flags, mode_t mode);
-
 int openat64(int dirfd, const char *pathname, int flags, mode_t mode) {
   int fd = _original_openat(dirfd, pathname, flags, mode);
   // If open() failed. Return without recording it.
@@ -246,9 +228,6 @@ int openat64(int dirfd, const char *pathname, int flags, mode_t mode) {
   return fd;
 }
 
-int (*_original_unlinkat)(int dirfd, const char *pathname, int flags);
-int unlinkat(int dirfd, const char *pathname, int flags);
-
 int unlinkat(int dirfd, const char *pathname, int flags) {
   // unlinkat could be the first function called in this module. Use init_once()
   init_once(dirfd);
@@ -261,10 +240,6 @@ int unlinkat(int dirfd, const char *pathname, int flags) {
   }
   return retval;
 }
-
-
-int (*_original_close)(int fd);
-int close(int fd);
 
 int close(int fd) {
   if(open_files[fd] != NULL) {
@@ -288,9 +263,7 @@ int close(int fd) {
   return retval;
 }
 
-void init(void)__attribute__((constructor));
-
-void init(void) {
+static void __attribute__((constructor)) init(void) {
   pthread_mutex_init(&lock,NULL);
 
   initlog();
@@ -315,4 +288,3 @@ void init(void) {
   _original_close = (int (*)(int))
     dlsym(RTLD_NEXT, "close");
 }
-
