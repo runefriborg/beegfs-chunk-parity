@@ -71,7 +71,7 @@ inline void errorlog(const char *format,...) {
 
     // write microtimestamp
     fprintf(f, "%lu.%lu ",(unsigned long)tv.tv_sec,(unsigned long)tv.tv_usec);
-    
+
     // write message
     va_list args;
     va_start( args, format );
@@ -100,7 +100,7 @@ inline void writelog(const char *format,...) {
 
     // write microtimestamp
     fprintf(f, "%lu.%lu ",(unsigned long)tv.tv_sec,(unsigned long)tv.tv_usec);
-    
+
     // write message
     va_list args;
     va_start( args, format );
@@ -131,7 +131,7 @@ inline void debuglog(const char *format,...) {
 
     // write microtimestamp
     fprintf(f, "%lu.%lu DEBUG ",(unsigned long)tv.tv_sec,(unsigned long)tv.tv_usec);
-    
+
     // write message
     va_list args;
     va_start( args, format );
@@ -158,26 +158,26 @@ void write_changelog(const char *format,...) {
   if(log_fd == NULL) {
     log_create_t = time(NULL);
     asprintf(&rand_log_name,
-	     "%s/%s-%ld-threadid=%08x",
-	     CHANGELOGFOLDER,
-	     storage_id,
-	     log_create_t,
-	     (unsigned int)pthread_self());
+        "%s/%s-%ld-threadid=%08x",
+        CHANGELOGFOLDER,
+        storage_id,
+        log_create_t,
+        (unsigned int)pthread_self());
     log_fd = fopen(rand_log_name,"a");
-    
+
     if(log_fd == NULL) {
       errorlog("Couldn't create file %s.",rand_log_name);
       return;
     }
-      
-    flock(fileno(log_fd),LOCK_EX);      
+
+    flock(fileno(log_fd),LOCK_EX);
   }
-  
+
   va_list args;
   va_start(args, format);
   vfprintf(log_fd, format, args);
   va_end(args);
-  
+
   // We are writing to /dev/shm, so fflush is "cheap"
   fflush(log_fd);
 }
@@ -201,11 +201,10 @@ inline void init_once(int dirfd) {
       char *storage_id_tmp = strdup(dirpath_tmp);
       char * p = storage_id_tmp;
       while (*p != '\0') {
-	if (*p == '/') {
-	  *p = '-';
-	}
-	
-	p++;
+        if (*p == '/') {
+          *p = '-';
+        }
+        p++;
       }
       storage_id = storage_id_tmp;
     }
@@ -216,7 +215,6 @@ inline void init_once(int dirfd) {
       errorlog("failed configuring dirpath. Must include '/chunks/'. dirpath=%s\n", dirpath);
     }
   }
-    
 }
 
 
@@ -224,7 +222,7 @@ int (*_original_openat)(int dirfd, const char *pathname, int flags, mode_t mode)
 int openat64(int dirfd, const char *pathname, int flags, mode_t mode);
 
 int openat64(int dirfd, const char *pathname, int flags, mode_t mode) {
-  int fd = _original_openat(dirfd, pathname, flags, mode); 
+  int fd = _original_openat(dirfd, pathname, flags, mode);
   // If open() failed. Return without recording it.
   if(fd == -1) {
     debuglog("openat64() org-openat64() returned -1\n");
@@ -239,7 +237,7 @@ int openat64(int dirfd, const char *pathname, int flags, mode_t mode) {
   if (flags == 0) {
     return fd;
   }
-  
+
   // read+write operation
   char *path = &pathbuf[MAX_PATH_LENGTH*(int)fd];
   strncpy(path, pathname,MAX_PATH_LENGTH);
@@ -254,7 +252,7 @@ int unlinkat(int dirfd, const char *pathname, int flags);
 int unlinkat(int dirfd, const char *pathname, int flags) {
   // unlinkat could be the first function called in this module. Use init_once()
   init_once(dirfd);
-  int retval = _original_unlinkat(dirfd, pathname, flags); 
+  int retval = _original_unlinkat(dirfd, pathname, flags);
   if(retval == 0) {
     debuglog("unlinkat()      path='%s/%s'. Writing log.\n",dirpath,pathname);
     write_changelog("%llu d %s/%s\n",time(NULL),dirpath,pathname);
@@ -293,13 +291,12 @@ int close(int fd) {
 void init(void)__attribute__((constructor));
 
 void init(void) {
-  
   pthread_mutex_init(&lock,NULL);
-  
+
   initlog();
   writelog("-----------\n");
   writelog("Initialising changelog folder...\n");
-  
+
   int retval = mkdir(CHANGELOGFOLDER, S_IRUSR | S_IWUSR | S_IXUSR);
   // If log-dir creation fails for any other reason than folder-exists, exit.
   if(retval != 0 && errno != EEXIST) {
@@ -310,7 +307,7 @@ void init(void) {
   else{
     writelog("Library injected.\n");
   }
-  
+
   _original_openat = (int (*)(int, const char *, int, mode_t))
     dlsym(RTLD_NEXT, "openat64");
   _original_unlinkat = (int (*)(int, const char *, int))
