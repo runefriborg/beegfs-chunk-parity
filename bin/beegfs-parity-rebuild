@@ -70,7 +70,7 @@ if flock --exclusive --nonblock 500; then
     hostfile="/opt/$dname/run/active_storage_nodes"
     base_dir=`cat /opt/$dname/etc/basedir`
     spool="/opt/$dname/spool/"
-    collect_hostlist "$storage_nodes" "$base_dir" > "$hostfile"
+    collect_hostlist "$storage_nodes" "$base_dir" | sort > "$hostfile"
 
     if ! grep -q "$rebuild_host" "$hostfile" ; then
         echo "** Error: Uknown host '$rebuild_host'" 1>&2
