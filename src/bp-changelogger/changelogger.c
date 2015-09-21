@@ -183,6 +183,7 @@ static void init_once(int dirfd) {
 
 int openat64(int dirfd, const char *pathname, int flags, mode_t mode) {
   int fd = _original_openat(dirfd, pathname, flags, mode);
+  int _errno = errno;
 
   init_once(dirfd);
 
@@ -190,21 +191,21 @@ int openat64(int dirfd, const char *pathname, int flags, mode_t mode) {
 
   // If open() failed. Return without recording it.
   if(fd == -1) {
-    debuglog("openat64() org-openat64() returned -1\n");
+    debuglog("openat64() org-openat64() returned -1 (error: %s)\n", strerror(_errno));
+    errno = _errno;
     return fd;
   }
 
   // return on read only operation
-  if (flags == 0) {
+  if (flags == 0)
     open_files[fd] = SAFE_TO_IGNORE;
-    return fd;
+  else {
+      // read+write operation
+      char *path = &pathbuf[MAX_PATH_LENGTH*(int)fd];
+      strncpy(path, pathname,MAX_PATH_LENGTH);
+      open_files[fd] = path;
   }
-
-  // read+write operation
-  char *path = &pathbuf[MAX_PATH_LENGTH*(int)fd];
-  strncpy(path, pathname,MAX_PATH_LENGTH);
-  open_files[fd] = path;
-
+  errno = _errno;
   return fd;
 }
 
@@ -212,12 +213,14 @@ int unlinkat(int dirfd, const char *pathname, int flags) {
   // unlinkat could be the first function called in this module. Use init_once()
   init_once(dirfd);
   int retval = _original_unlinkat(dirfd, pathname, flags);
+  int _errno = errno;
   if(retval == 0) {
     debuglog("unlinkat()      path='%s/%s'. Writing log.\n",dirpath,pathname);
     write_changelog("%llu d %s/%s\n",time(NULL),dirpath,pathname);
   } else {
-    debuglog("unlinkat()      path='%s/%s'. unlinkat returned error, ignoring.\n",dirpath,pathname);
+    debuglog("unlinkat()      path='%s/%s'. unlinkat returned error: %s\n",dirpath,pathname,strerror(_errno));
   }
+  errno = _errno;
   return retval;
 }
 
