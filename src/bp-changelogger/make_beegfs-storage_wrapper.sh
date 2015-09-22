@@ -16,6 +16,14 @@ BEEGFS_STORAGE_BIN=$(eval echo $APP_BIN)
 cat > "$BEEGFS_STORAGE_BIN" << EOF
 #!/bin/bash
 
+if [[ "\$@" =~ store[0-9][0-9] ]]; then
+    BP_STORE="\${BASH_REMATCH}"
+else
+    echo "** ERROR: Cannot tell which store this instance is using" 1>&2
+    exit 1
+fi
+
+export BP_STORE
 LD_PRELOAD="/usr/lib64/bp-changelogger.so" exec -a "\$0" "\$0.bin" \$@
 EOF
 
