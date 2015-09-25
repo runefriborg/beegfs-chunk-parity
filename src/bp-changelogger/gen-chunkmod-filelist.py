@@ -121,7 +121,7 @@ def cleanup_until(until, store):
                 #print file
                 try:
                     os.remove(file)
-                except os.OSError:
+                except os.error:
                     pass
             fcntl.flock(f.fileno(), fcntl.LOCK_UN)
             f.close()
