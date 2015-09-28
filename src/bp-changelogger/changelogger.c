@@ -157,7 +157,7 @@ int close(int fd) {
     char buf2[PATH_MAX];
     sprintf(buf,"/proc/self/fd/%u",fd);
     realpath(buf,buf2);
-    log_info("close()    fd='%d'. No recorded openat on %s", fd, buf2);
+    log_debug("close()    fd='%d'. No recorded openat on %s", fd, buf2);
   }
   else {
     log_debug("close()    fd='%d', path='%s/%s'", fd, dirpath, fd_info);
