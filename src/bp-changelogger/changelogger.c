@@ -105,6 +105,12 @@ int openat64(int dirfd, const char *pathname, int flags, mode_t mode) {
   int fd = _original_openat(dirfd, pathname, flags, mode);
   int _errno = errno;
 
+  if (fd < -1 || fd >= MAX_OPEN_FILES) {
+    log_error("openat64() fd is invalid. fd='%d'", fd);
+    errno = _errno;
+    return fd;
+  }
+
   // If open() failed. Return without recording it.
   if(fd == -1) {
     log_debug("openat64() returned -1 (error: %s)", strerror(_errno));
@@ -143,8 +149,8 @@ int unlinkat(int dirfd, const char *pathname, int flags) {
 }
 
 int close(int fd) {
-  if (fd < 0 || fd > MAX_OPEN_FILES) {
-    log_error("close() fd is invalid - this should never happen");
+  if (fd < 0 || fd >= MAX_OPEN_FILES) {
+    log_error("close() fd is invalid. fd='%d'", fd);
     return _original_close(fd);
   }
 
