@@ -20,6 +20,7 @@
 #define CHANGELOG_ROTATION_TIME     86400
 #define CHANGELOG_FOLDER            "/dev/shm/beegfs-changelog/"
 
+/* DEBUG must be defined, change to 0 to disable debug info */
 #define DEBUG 1
 
 #define SAFE_TO_IGNORE ((char *)-1)
@@ -55,7 +56,7 @@ static char pathbuf[MAX_OPEN_FILES*MAX_PATH_LENGTH];
 #define log_error(fmt, ...) syslog(LOG_ERR, fmt, ##__VA_ARGS__)
 #define log_info(fmt, ...) syslog(LOG_INFO, fmt, ##__VA_ARGS__)
 
-#if defined(DEBUG) && DEBUG
+#if DEBUG
 #define log_debug(fmt, ...) syslog(LOG_INFO, "DEBUG " fmt, ##__VA_ARGS__)
 #else
 #define log_debug(...)
@@ -159,11 +160,13 @@ int close(int fd) {
     /* Do nothing. */
   }
   else if (fd_info == NULL) {
+#if DEBUG
     char buf[256];
     char buf2[PATH_MAX];
     sprintf(buf,"/proc/self/fd/%u",fd);
     realpath(buf,buf2);
     log_debug("close()    fd='%d'. No recorded openat on %s", fd, buf2);
+#endif
   }
   else {
     log_debug("close()    fd='%d', path='%s/%s'", fd, dirpath, fd_info);
