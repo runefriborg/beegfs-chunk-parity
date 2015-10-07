@@ -119,6 +119,13 @@ int openat64(int dirfd, const char *pathname, int flags, mode_t mode) {
     return fd;
   }
 
+  char *old_path = open_files[fd];
+  if (old_path != NULL) {
+      log_error("openat64() fd %d was not cleared, old path = '%s'",
+              fd,
+              old_path == SAFE_TO_IGNORE? "(SAFE_TO_IGNORE)" : old_path);
+  }
+
   log_debug("openat64() path='%s/%s'. flags='%d' mode='%lu'",
       dirpath, pathname, flags, (unsigned long)mode);
 
@@ -171,8 +178,9 @@ int close(int fd) {
   else {
     log_debug("close()    fd='%d', path='%s/%s'", fd, dirpath, fd_info);
     write_change("%llu m %s/%s\n",time(NULL),dirpath,fd_info);
-    open_files[fd] = NULL;
   }
+
+  open_files[fd] = NULL;
 
   return _original_close(fd);
 }
