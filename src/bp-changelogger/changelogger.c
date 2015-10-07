@@ -15,7 +15,8 @@
 #include <err.h>
 #include <syslog.h>
 
-#define MAX_OPEN_FILES              16384
+/* MAX_OPEN_FILES should match the limit set for the beegfs-storage process. */
+#define MAX_OPEN_FILES              60000
 #define MAX_PATH_LENGTH             512
 #define CHANGELOG_ROTATION_TIME     86400
 #define CHANGELOG_FOLDER            "/dev/shm/beegfs-changelog/"
