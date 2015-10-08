@@ -89,14 +89,15 @@ if flock --exclusive --nonblock 500; then
     fi
     timestamp=`date +%s`
 
+    clean_old="N"
     if [ "$operation" == "complete" ] && [ "$last_timestamp" != "0" ]; then
         echo "** Warning: A complete run has already been done."
-        echo "  All existing parity data will be overwritten."
-        echo "  This may take a long time!"
+        echo "  All existing parity data will be deleted."
         read -p "Continue? [y/N]" -n 1 -r -s reply
         echo
         if [[ $reply =~ [Yy] ]]; then
             echo "Continuing."
+            clean_old="Y"
         else
             echo "Aborting"
             exit 1
@@ -112,6 +113,13 @@ if flock --exclusive --nonblock 500; then
     # We need two ranks per host so we double it up
     paste -d '\n' "$hostfile" "$hostfile" >> "/opt/$dname/run/hosts"
     mpirun="mpirun --hostfile /opt/$dname/run/hosts"
+    if [ "$clean_old" == "Y" ]; then
+        echo "Removing old parity data"
+        mpirun --hostfile $hostfile find $base_dir/parity -mindepth 1 -delete
+        echo "Removing old parity databases"
+        mpirun --hostfile $hostfile find /opt/$dname/spool -mindepth 1 -delete
+        find /opt/$dname/spool/db -mindepth 1 -delete
+    fi
     $mpirun ./bp-parity-gen $operation $base_dir $last_timestamp $timestamp /opt/$dname/spool/data /opt/$dname/spool/db
 
     echo $timestamp > $last_successful_timestamp_file
