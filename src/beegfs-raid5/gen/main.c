@@ -436,6 +436,8 @@ int main(int argc, char **argv)
             0,
             MPI_COMM_WORLD);
     if (mpi_rank == 0) {
+        if (ntargets < last_run.ntargets)
+            errx(1, "Fewer targets than last run, something is wrong!");
         for (int i = 1; i < 2*ntargets+1; i++)
             if (targetIDs[i].version != GIT_VERSION)
                 errx(1, "Version mismatch");
@@ -462,7 +464,10 @@ int main(int argc, char **argv)
         rank2st[0] = -1;
         for (int i = 0; i < ntargets; i++)
         {
-            st2rank[i] = last_run.targetIDs[i].rank;
+            int rank = last_run.targetIDs[i].rank;
+            if (rank == -1)
+                errx(1, "Storage target missing! targetNumID = %d", last_run.targetIDs[i].id);
+            st2rank[i] = rank;
             rank2st[st2rank[i]] = i;
             rank2st[st2rank[i]+1] = i;
         }
