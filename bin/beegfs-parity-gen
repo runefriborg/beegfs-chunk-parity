@@ -119,6 +119,7 @@ if flock --exclusive --nonblock 500; then
         echo "Removing old parity databases"
         mpirun --hostfile $hostfile find /opt/$dname/spool -mindepth 1 -delete
         find /opt/$dname/spool/db -mindepth 1 -delete
+        find /opt/$dname/spool/ -mindepth 1 -type f -delete
     fi
     $mpirun ./bp-parity-gen $operation $base_dir $last_timestamp $timestamp /opt/$dname/spool/data /opt/$dname/spool/db
 
