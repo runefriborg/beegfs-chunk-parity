@@ -12,11 +12,14 @@
 
 #undef PROFILE
 #define GETENTRY_THREADS 32
-#define GETENTRY_COMMAND   "cat output.%d | beegfs-ctl --getentryinfo --nomappings --unmounted -"
+#define GETENTRY_COMMAND   "cat output.%d | beegfs-ctl --getentryinfo --unmounted -"
 #define PATH_IDENTIFIER    "Path: "
-#define ENTRYID_IDENTIFIER "EntryID: "
 #define LINE_BUFSIZE PATH_MAX
 
+// GLOBALS
+long FILECOUNT;
+char TARGETID[128];
+char MOUNTPOINT[PATH_MAX];
 
 struct arg_struct {
   int thread_id;
@@ -37,10 +40,8 @@ void * getentry_worker (void * x) {
   #endif
 
   size_t path_identifier_len = strlen(PATH_IDENTIFIER);
-  size_t entryid_identifier_len = strlen(ENTRYID_IDENTIFIER);
 
   char path_line[PATH_MAX];
-  char entryid_line[64];
 
   #ifdef PROFILE
     perf_getentry = perf_create("thread", args->thread_id*3+1, 0);
@@ -66,15 +67,24 @@ void * getentry_worker (void * x) {
       perf_update_start(perf_strcmp);  
     #endif
     if (strncmp(line, PATH_IDENTIFIER, path_identifier_len) == 0) {
+
       strcpy(path_line, line + (int) path_identifier_len);
       
       // Remove newline
       path_line[(int)strlen(path_line)-1] = '\0';	
-    } else if (strncmp(line, ENTRYID_IDENTIFIER, entryid_identifier_len) == 0) {
-      strcpy(entryid_line, line + (int) entryid_identifier_len);
 
-      // Remove newline
-      entryid_line[(int)strlen(entryid_line)-1] = '\0';
+    } else if (strstr(line, TARGETID) != NULL) { 
+      /* TARGETID found. Rename to .CORRUPT */
+
+      
+      if (strstr(path_line, ".CORRUPT") == NULL) {
+	char filename0[PATH_MAX];
+	char filename_fixed[PATH_MAX];
+	snprintf(filename0, sizeof(filename0), "%s%s", MOUNTPOINT, path_line);
+	snprintf(filename_fixed, sizeof(filename_fixed), "%s.CORRUPT", filename0);
+	rename(filename0, filename_fixed);
+	printf("%s\n", filename_fixed);
+      }
     }
     #ifdef PROFILE
       perf_update_tick(perf_strcmp);
@@ -109,11 +119,12 @@ int main(int argc, char *argv[]) {
   #endif
 
   /* Get args */
-  if(argc == 3) {
-    /* Init db */
-    //db = mutexleveldb_create2(atol(argv[1]), argv[2]);
+  if(argc == 4) {
+    snprintf (MOUNTPOINT, PATH_MAX, "%s", argv[1]);
+    FILECOUNT = atoi(argv[2]);
+    snprintf (TARGETID, 128, "@ %s", argv[3]);
   } else {
-    printf("Usage: bp-cm-getentry <filecount> <leveldb filename>\n");
+    printf("Usage: bp-cm-getentry <BeeGFS mountpoint> <filecount> <target id>\n");
     exit(1);
   }
  

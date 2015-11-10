@@ -1,8 +1,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <string.h>
 #include <errno.h>
+#include <unistd.h>
 
 /* "readdir" etc. are defined here. */
 #include <dirent.h>
@@ -18,6 +20,7 @@
 // Global values shared between threads
 struct mutexqueue * dir_queue;
 int SKIPCHARS;
+time_t TIMESTAMP;
 
 
 /* Worker thread for listing dirs */
@@ -27,6 +30,8 @@ void * dir_worker (void * fileoutput) {
   char * dir_name;
   FILE * fp = fileoutput;
   struct dirent dirent_data; 
+  struct stat sb;
+  char fnamebuf[PATH_MAX];
   long count;
 
   count = 0;
@@ -73,11 +78,21 @@ void * dir_worker (void * fileoutput) {
 	/* Write the file entry to output file */
         d_name = entry->d_name;
         if (! (entry->d_type & DT_DIR)) {
-          if (strlen(dir_name) > SKIPCHARS) {
-	    fprintf (fp, "%s/%s\n", dir_name + SKIPCHARS, d_name);
-          } else {
-	    fprintf (fp, "/%s\n", d_name);
-          }
+
+	  /* check m_time using lstat */
+	  snprintf (fnamebuf, PATH_MAX, "%s/%s", dir_name, d_name);
+	  if (lstat(fnamebuf, &sb)) {
+	    perror("lstat");
+	  } else {
+	    if (sb.st_mtime > TIMESTAMP) {
+	      /* file is modified after TIMESTAMP */	      
+	      if (strlen(dir_name) > SKIPCHARS) {
+		fprintf (fp, "%s/%s\n", dir_name + SKIPCHARS, d_name);
+	      } else {
+		fprintf (fp, "/%s\n", d_name);
+	      }
+	    }
+	  }
 
           count++;
           if ((count % 100000) == 0) {
@@ -133,12 +148,13 @@ int main(int argc, char *argv[]) {
   char * dir = (char *) malloc(PATH_MAX*sizeof(char));
  
   /* Get args */
-  if(argc == 3) {
+  if(argc == 4) {
     snprintf (dir, PATH_MAX, "%s", argv[2]);
     dir= realpath(dir, NULL);
     SKIPCHARS=atoi(argv[1]);
+    TIMESTAMP=(time_t) atoi(argv[3]);
   } else {
-    printf("Usage: bp-cm-filelist <skipNchars> <directory>\n");
+    printf("Usage: bp-cm-filelist <skipNchars> <directory> <newer than timestamp>\n");
     exit(1);
   }
 
