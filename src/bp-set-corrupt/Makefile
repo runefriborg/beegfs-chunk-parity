@@ -1,10 +1,10 @@
 include ../beegfs-conf.sh
 
-CPPFLAGS?=-I${CONF_LEVELDB_INCLUDEPATH} -Wall -Wextra -pedantic -std=gnu99 -g -Os
-LDFLAGS?=-L${CONF_LEVELDB_LIBPATH}
+CPPFLAGS?= -Wall -Wextra -pedantic -std=gnu99 -g -Os
+LDFLAGS?=
 SOURCES=perf.c filelist-runner.c getentry-runner.c
 OBJECTS=$(SOURCES:.c=.o)
-PROGRAMS=bp-cm-filelist bp-cm-getentry bp-chunkmap
+PROGRAMS=bp-cm-filelist bp-cm-getentry bp-set-corrupt
 
 all: $(PROGRAMS)
 	cp -f ../beegfs-conf.sh ../../bin/
@@ -21,10 +21,10 @@ bp-cm-filelist: filelist-runner.o
 	mv -f $@ ../../bin/
 
 bp-cm-getentry: perf.o getentry-runner.o
-	$(CC) $(LDFLAGS) -lleveldb -lpthread $^ -o $@
+	$(CC) $(LDFLAGS) -lpthread $^ -o $@
 	mv -f $@ ../../bin/
 
-bp-chunkmap: beegfs-chunkmap.sh
+bp-set-corrupt: bp-set-corrupt.sh
 	cp -f $^ $@
 	mv -f $@ ../../bin/
 
