@@ -91,9 +91,6 @@ if flock --exclusive --nonblock 500; then
     for h in `cat "$hostfile"`; do
         ssh $h cat /tmp/$base_dir-corrupted_chunks
     done | sort -u > $spool/corrupted_chunks
-    map_dir="`mktemp --directory`"
-    ./bp-chunkmap -d /faststorage -o "$map_dir" -c "`mktemp --directory`"
-    cat "$spool/corrupted_chunks" | cut -d/ -f5- | ./bp-rename-corrupt-files "$map_dir"
 else
     echo "** Error: Can't acquire lock, is the program already running?" 1>&2
 fi
