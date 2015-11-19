@@ -86,7 +86,7 @@ void * dir_worker (void * fileoutput) {
 	  } else {
 	    if (sb.st_mtime > TIMESTAMP) {
 	      /* file is modified after TIMESTAMP */	      
-	      if (strlen(dir_name) > SKIPCHARS) {
+	      if (strlen(dir_name) > (size_t)SKIPCHARS) {
 		fprintf (fp, "%s/%s\n", dir_name + SKIPCHARS, d_name);
 	      } else {
 		fprintf (fp, "/%s\n", d_name);
