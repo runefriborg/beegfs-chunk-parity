@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <time.h>
+#include <sys/stat.h>
 
 #include <pthread.h>
 
@@ -667,6 +668,12 @@ int main(int argc, char **argv)
     ProgressSender pr_sender;
     memset(&pr_sender, 0, sizeof(pr_sender));
     ProgressSample pr_sample = PROGRESS_SAMPLE_INIT;
+
+    int par_mkdir_rc = mkdirat(store_fd, "parity", 0700);
+    if (par_mkdir_rc == -1 && errno != EEXIST) {
+        err(1, "No parity folder, and we can't create one");
+    }
+
     HostState hs;
     memset(&hs, 0, sizeof(hs));
     hs.storage_target = my_st;
