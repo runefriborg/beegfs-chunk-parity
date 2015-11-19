@@ -22,7 +22,7 @@
 #define CHANGELOG_FOLDER            "/dev/shm/beegfs-changelog/"
 
 /* DEBUG must be defined, change to 0 to disable debug info */
-#define DEBUG 1
+#define DEBUG 0
 
 #define SAFE_TO_IGNORE ((char *)-1)
 
