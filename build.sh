@@ -32,7 +32,7 @@ build() {
 
     ( cd "src/bp-set-corrupt/"
     _cc bp-cm-filelist filelist-runner.c -lpthread
-    _cc bp-cm-getentry getentry-runner.c perf.c -lpthread
+    _cc bp-cm-getentry getentry-runner.c -lpthread
     cp bp-set-corrupt.sh "$BUILD/bp-set-corrupt"
     )
 

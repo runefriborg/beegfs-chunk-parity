@@ -8,9 +8,6 @@
 /* limits.h defines "PATH_MAX". */
 #include <limits.h>
 
-#include "perf.h"
-
-#undef PROFILE
 #define GETENTRY_THREADS 32
 #define GETENTRY_COMMAND   "cat output.%d | beegfs-ctl --getentryinfo --unmounted -"
 #define PATH_IDENTIFIER    "Path: "
@@ -35,20 +32,9 @@ void * getentry_worker (void * x) {
   char cmd[PATH_MAX];
   struct arg_struct *args = (struct arg_struct *) x;
 
-  #ifdef PROFILE
-    perf_entry_t * perf_getentry, * perf_strcmp;
-  #endif
-
   size_t path_identifier_len = strlen(PATH_IDENTIFIER);
 
   char path_line[PATH_MAX];
-
-  #ifdef PROFILE
-    perf_getentry = perf_create("thread", args->thread_id*3+1, 0);
-    perf_strcmp   = perf_create("strcmp", args->thread_id*3+3, args->thread_id*3+1);
-  
-    perf_update_start(perf_getentry);
-  #endif
 
   /* Create cmd */
   sprintf(cmd, GETENTRY_COMMAND, args->thread_id);
@@ -63,20 +49,15 @@ void * getentry_worker (void * x) {
   /* Read script output from the pipe line by line */
   linenr = 1;
   while (fgets(line, LINE_BUFSIZE, pipe) != NULL) {
-    #ifdef PROFILE
-      perf_update_start(perf_strcmp);  
-    #endif
     if (strncmp(line, PATH_IDENTIFIER, path_identifier_len) == 0) {
 
       strcpy(path_line, line + (int) path_identifier_len);
-      
+
       // Remove newline
-      path_line[(int)strlen(path_line)-1] = '\0';	
+      path_line[(int)strlen(path_line)-1] = '\0';
 
-    } else if (strstr(line, TARGETID) != NULL) { 
+    } else if (strstr(line, TARGETID) != NULL) {
       /* TARGETID found. Rename to .CORRUPT */
-
-      
       if (strstr(path_line, ".CORRUPT") == NULL) {
 	char filename0[PATH_MAX];
 	char filename_fixed[PATH_MAX];
@@ -86,25 +67,12 @@ void * getentry_worker (void * x) {
 	printf("%s\n", filename_fixed);
       }
     }
-    #ifdef PROFILE
-      perf_update_tick(perf_strcmp);
-    #endif
     ++linenr;
-    
   }
-    
+
   /* Once here, out of the loop, the script has ended. */
   pclose(pipe); /* Close the pipe */
-
-  #ifdef PROFILE
-    perf_update_tick(perf_getentry);
-
-    perf_submit(perf_getentry);
-    perf_submit(perf_strcmp);
-  #endif
-
   pthread_exit(NULL);
-  
 }
 
 
@@ -113,10 +81,6 @@ int main(int argc, char *argv[]) {
   pthread_attr_t attr;
   struct arg_struct thread_args[GETENTRY_THREADS];
   int i;
-
-  #ifdef PROFILE
-    perf_entry_t * perf_main;
-  #endif
 
   /* Get args */
   if(argc == 4) {
@@ -127,12 +91,6 @@ int main(int argc, char *argv[]) {
     printf("Usage: bp-cm-getentry <BeeGFS mountpoint> <filecount> <target id>\n");
     exit(1);
   }
- 
-  #ifdef PROFILE
-    perf_global_init();
-    perf_main = perf_create("Main", 0, -1);
-    perf_update_start(perf_main);
-  #endif
 
   /* For portability, explicitly create threads in a joinable state */
   pthread_attr_init(&attr);
@@ -148,13 +106,6 @@ int main(int argc, char *argv[]) {
   for (i=0; i<GETENTRY_THREADS; i++) {
     pthread_join(threads[i], NULL);
   }
-
-  #ifdef PROFILE
-    perf_update_tick(perf_main);
-    perf_submit(perf_main);
-    perf_output_report(0);
-    perf_global_free();
-  #endif
 
   /* Clean up and exit */
   pthread_attr_destroy(&attr);
