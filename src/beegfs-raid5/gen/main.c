@@ -26,6 +26,10 @@
 #define TARGET_BUFFER_SIZE (10*1024*1024)
 #define TARGET_SEND_THRESHOLD (1*1024*1024)
 
+#ifndef MAX_WORKITEMS
+#error "MAX_WORKITEMS should be defined in ../../src/beegfs-conf.sh!"
+#endif
+
 #define PROF_START(name) \
     struct timespec t_##name##_0; \
     clock_gettime(CLOCK_MONOTONIC, &t_##name##_0)
@@ -506,9 +510,6 @@ int main(int argc, char **argv)
 
     PROF_START(phase1);
 
-#ifndef MAX_WORKITEMS
-#define MAX_WORKITEMS (1ULL*1000*1000)
-#endif
     FileInfoHash *file_info_hash = NULL;
     size_t name_bytes_written = 0;
     const size_t name_bytes_limit = MAX_WORKITEMS*100;
