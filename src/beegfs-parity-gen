@@ -5,7 +5,7 @@ set -o errexit
 
 arg1="${1:-}"
 dname="${2:-}"
-last_successful_timestamp_file="/opt/$dname/spool/last-gen-timestamp"
+last_successful_timestamp_file="$dname/spool/last-gen-timestamp"
 
 function usage {
 echo "usage: beegfs-parity-gen --complete <config>"
@@ -35,7 +35,7 @@ if [ -z $dname ]; then
 fi
 
 function must_have_file {
-    f="/opt/$dname/$1"
+    f="$dname/$1"
     if [ ! -e "$f" ]; then
         echo "Can't find file '$f'" 1>&2
         exit 1
@@ -45,7 +45,7 @@ must_have_file "etc/basedir"
 must_have_file "etc/exechost"
 must_have_file "etc/hosts"
 
-exechost="`cat /opt/$dname/etc/exechost`"
+exechost="`cat $dname/etc/exechost`"
 
 if [[ $EUID -ne 0 ]]; then
     echo "You need root privilege to run this program" 1>&2
@@ -57,8 +57,8 @@ if [ "`hostname -s`" != "$exechost" ]; then
 fi
 
 # Make sure all necessary folders are present
-mkdir --parents "/opt/$dname/run"
-mkdir --parents "/opt/$dname/spool"
+mkdir --parents "$dname/run"
+mkdir --parents "$dname/spool"
 
 function collect_hostlist {
     local full_hostlist="$1"
@@ -108,28 +108,28 @@ if flock --exclusive --nonblock 500; then
     fi
 
     PATH="`pwd`:$PATH"
-    storage_nodes="/opt/$dname/etc/hosts"
-    hostfile="/opt/$dname/run/active_storage_nodes"
-    base_dir=`cat /opt/$dname/etc/basedir`
+    storage_nodes="$dname/etc/hosts"
+    hostfile="$dname/run/active_storage_nodes"
+    base_dir=`cat $dname/etc/basedir`
     collect_hostlist "$storage_nodes" "$base_dir" | sort > "$hostfile"
-    echo `hostname -s` > /opt/$dname/run/hosts
+    echo `hostname -s` > $dname/run/hosts
     # We need two ranks per host so we double it up
-    paste -d '\n' "$hostfile" "$hostfile" >> "/opt/$dname/run/hosts"
-    mpirun="mpirun --hostfile /opt/$dname/run/hosts"
+    paste -d '\n' "$hostfile" "$hostfile" >> "$dname/run/hosts"
+    mpirun="mpirun --hostfile $dname/run/hosts"
     if [ "$clean_old" == "Y" ]; then
         echo "Removing old parity data"
         mpirun --hostfile $hostfile find $base_dir/parity -mindepth 1 -delete
         echo "Removing old parity databases"
-        mpirun --hostfile $hostfile find /opt/$dname/spool -mindepth 1 -delete
-        find /opt/$dname/spool/db -mindepth 1 -delete
-        find /opt/$dname/spool/ -mindepth 1 -type f -delete
+        mpirun --hostfile $hostfile find $dname/spool -mindepth 1 -delete
+        find $dname/spool/db -mindepth 1 -delete
+        find $dname/spool/ -mindepth 1 -type f -delete
     fi
-    $mpirun ./bp-parity-gen $operation $base_dir $last_timestamp $timestamp /opt/$dname/spool/data /opt/$dname/spool/db
+    $mpirun ./bp-parity-gen $operation $base_dir $last_timestamp $timestamp $dname/spool/data $dname/spool/db
 
     echo $timestamp > $last_successful_timestamp_file
     $mpirun ./bp-find-chunks-changed-between --cleanup-until="$timestamp" --store="$base_dir"
 else
     echo "** Error: Can't acquire lock, is the program already running?" 1>&2
 fi
-) 500>"/opt/$dname/run/lock"
+) 500>"$dname/run/lock"
 

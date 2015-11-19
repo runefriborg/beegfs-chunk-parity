@@ -4,7 +4,7 @@ set -o pipefail
 set -o errexit
 
 dname="${1:-}"
-last_successful_timestamp_file="/opt/$dname/spool/last-gen-timestamp"
+last_successful_timestamp_file="$dname/spool/last-gen-timestamp"
 
 function usage {
 echo "usage: beegfs-parity-rebuild <config> <host to rebuild>"
@@ -31,7 +31,7 @@ if [ -z $rebuild_host ]; then
 fi
 
 function must_have_file {
-    f="/opt/$dname/$1"
+    f="$dname/$1"
     if [ ! -e "$f" ]; then
         echo "Can't find file '$f'" 1>&2
         exit 1
@@ -41,7 +41,7 @@ must_have_file "etc/basedir"
 must_have_file "etc/exechost"
 must_have_file "etc/hosts"
 
-exechost="`cat /opt/$dname/etc/exechost`"
+exechost="`cat $dname/etc/exechost`"
 
 if [[ $EUID -ne 0 ]]; then
     echo "You need root privilege to run this program" 1>&2
@@ -59,8 +59,8 @@ function collect_hostlist {
 }
 
 # Make sure all necessary folders are present
-mkdir --parents "/opt/$dname/run"
-mkdir --parents "/opt/$dname/spool"
+mkdir --parents "$dname/run"
+mkdir --parents "$dname/spool"
 
 (
 if flock --exclusive --nonblock 500; then
@@ -69,10 +69,10 @@ if flock --exclusive --nonblock 500; then
         exit 1
     fi
 
-    storage_nodes="/opt/$dname/etc/hosts"
-    hostfile="/opt/$dname/run/active_storage_nodes"
-    base_dir=`cat /opt/$dname/etc/basedir`
-    spool="/opt/$dname/spool/"
+    storage_nodes="$dname/etc/hosts"
+    hostfile="$dname/run/active_storage_nodes"
+    base_dir=`cat $dname/etc/basedir`
+    spool="$dname/spool/"
     collect_hostlist "$storage_nodes" "$base_dir" | sort > "$hostfile"
 
     if ! grep -q "$rebuild_host" "$hostfile" ; then
@@ -85,9 +85,9 @@ if flock --exclusive --nonblock 500; then
     scp -pr $safe_host:$spool/db $rebuild_host:$spool/db
     rebuild_id=`ssh "$rebuild_host" cat "$base_dir/targetNumID"`
 
-    echo `hostname -s` > /opt/$dname/run/hosts
-    cat "$hostfile" >> /opt/$dname/run/hosts
-    mpirun="mpirun --hostfile /opt/$dname/run/hosts"
+    echo `hostname -s` > $dname/run/hosts
+    cat "$hostfile" >> $dname/run/hosts
+    mpirun="mpirun --hostfile $dname/run/hosts"
     $mpirun ./bp-parity-rebuild $rebuild_id $base_dir $spool/data /tmp/$base_dir-corrupted_chunks $spool/db
 
     # Collect list of potentially corrupt chunks
@@ -97,5 +97,5 @@ if flock --exclusive --nonblock 500; then
 else
     echo "** Error: Can't acquire lock, is the program already running?" 1>&2
 fi
-) 500>"/opt/$dname/run/lock"
+) 500>"$dname/run/lock"
 
