@@ -38,14 +38,17 @@ function must_have_file {
     fi
 }
 must_have_file "etc/basedir"
+must_have_file "etc/exechost"
 must_have_file "etc/hosts"
+
+exechost="`cat /opt/$dname/etc/exechost`"
 
 if [[ $EUID -ne 0 ]]; then
     echo "You need root privilege to run this program" 1>&2
     exit 1
 fi
-if [ "`hostname -s`" != "s10n50" ]; then
-    echo "Should only run on s10n50" 1>&2
+if [ "`hostname -s`" != "$exechost" ]; then
+    echo "Should only run on $exechost" 1>&2
     exit 1
 fi
 
