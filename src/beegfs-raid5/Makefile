@@ -16,7 +16,7 @@ clean:
 
 # Changing any header anywhere causes full recompile
 %.o: %.c gen/*.h rebuild/*.h common/*.h Makefile
-	$(CC) -c $(CPPFLAGS) $(CFLAGS) $< -o $@
+	$(CC) -c $(CPPFLAGS) $(CFLAGS) $< -o $@ -DMAX_WORKITEMS=$(MAX_ITEMS)
 
 ../../bin/bp-parity-gen: gen/main.o gen/file_info_hash.o gen/assign_lanes.o common/progress_reporting.o common/task_processing.o common/persistent_db.o
 	$(CC) -L$(CONF_LEVELDB_LIBPATH) -lleveldb -lpthread $(LDFLAGS) $^ -o $@
