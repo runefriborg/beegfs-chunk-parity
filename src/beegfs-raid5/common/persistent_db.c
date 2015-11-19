@@ -49,7 +49,7 @@ PersistentDB* pdb_init(const char *db_folder, uint64_t expected_version)
     res->db = db;
 
     size_t version_len;
-    uint64_t *version = leveldb_get(
+    uint64_t *version = (uint64_t *)leveldb_get(
             db,
             read_options,
             FORMAT_VERSION_KEY, strlen(FORMAT_VERSION_KEY),
@@ -69,7 +69,7 @@ PersistentDB* pdb_init(const char *db_folder, uint64_t expected_version)
     else if (version_len != sizeof(*version))
         errx(1, "Corrupt version field in database");
     else if (*version != expected_version)
-        errx(1, "Incompatible DB (found: %llu, expected: %llu)",
+        errx(1, "Incompatible DB (found: %lu, expected: %lu)",
                 *version, expected_version);
     else
         leveldb_free(version);

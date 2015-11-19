@@ -483,10 +483,8 @@ int main(int argc, char **argv)
 
     PROF_END(init);
 
-    int eater_ranks[MAX_TARGETS];
     int feeder_ranks[MAX_TARGETS];
     for (int i = 0; i < ntargets; i++) {
-        eater_ranks[i] = 1 + 2*i;
         feeder_ranks[i] = 2 + 2*i;
     }
 
