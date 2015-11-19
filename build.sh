@@ -41,9 +41,8 @@ build() {
     )
 
     ( cd "src/beegfs-raid5"
-    GIT_COMMIT=0x$(git rev-parse --short=8 HEAD)
-    if [ $? -ne 0 ]; then
-        GIT_COMMIT=0xDEADBEEF
+    GIT_COMMIT=0x$(git rev-parse --short=8 HEAD 2>/dev/null || echo DEADBEEF)
+    if [ "$GIT_COMMIT" == "0xDEADBEEF" ]; then
         echo "Warning: Not a git repository, can't set a proper version" >&2
     fi
     local CPPFLAGS="${CPPFLAGS} -I${CONF_LEVELDB_INCLUDEPATH} -D_GIT_COMMIT=${GIT_COMMIT}"
