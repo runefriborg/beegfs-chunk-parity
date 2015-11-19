@@ -6,7 +6,7 @@ MPICC=mpicc
 BASEDIR="$(cd $(dirname ${BASH_SOURCE[0]}); pwd)"
 BUILD="$BASEDIR/build"
 CPPFLAGS=${CPPFLAGS:--Wall -Wextra -std=gnu99 -Os}
-PREFIX="${PREFIX:-$BASEDIR}"
+PREFIX="$(cd ${PREFIX:-$BASEDIR}; pwd)"
 
 source src/beegfs-conf.sh
 
