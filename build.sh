@@ -28,6 +28,8 @@ build() {
     ( cd "src/bp-changelogger"
     $CC -fPIC -Wall -O2 -shared -o "$BUILD/bp-changelogger.so" changelogger.c -ldl
     cp gen-chunkmod-filelist.py "$BUILD/bp-find-chunks-changed-between"
+    cp make_beegfs-storage_wrapper.sh "$BUILD/bp-update-storage-wrapper"
+    cp remove_beegfs-storage_wrapper.sh "$BUILD/bp-remove-storage-wrapper"
     )
 
     ( cd "src/bp-set-corrupt/"
@@ -76,20 +78,8 @@ install_bins() {
     cp bp-parity-*          "$PREFIX/bin/"
     cp bp-set-corrupt       "$PREFIX/bin/"
     cp beegfs-parity-*      "$PREFIX/bin/"
-    )
-}
-
-enable_logger() {
-    ( cd "src/bp-changelogger/"
-    PREFIX=$PREFIX ./make_beegfs-storage_wrapper.sh
-    echo "Change-logging will be enabled when you (re)start the BeeGFS storage service"
-    )
-}
-
-disable_logger() {
-    ( cd "src/bp-changelogger/"
-    PREFIX=$PREFIX ./remove_beegfs-storage_wrapper.sh
-    echo "Change-logging will be disabled when you (re)start the BeeGFS storage service"
+    cp bp-update-storage-wrapper "$PREFIX/bin/"
+    cp bp-remove-storage-wrapper "$PREFIX/bin/"
     )
 }
 
@@ -101,8 +91,6 @@ case $1 in
         build
     ;;
     install) install_bins $PREFIX ;;
-    enable-log) enable_logger $PREFIX ;;
-    disable-log) disable_logger $PREFIX ;;
     clean) clean ;;
     *) echo help ;;
 esac

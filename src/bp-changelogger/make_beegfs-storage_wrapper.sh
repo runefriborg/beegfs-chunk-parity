@@ -5,10 +5,7 @@ if [ ! -f /etc/init.d/beegfs-storage ]; then
     exit 0
 fi
 
-if [ -z $PREFIX ]; then
-    echo "No install PREFIX specified"
-    exit 1
-fi
+INSTALL_PREFIX="$(cd $(dirname ${BASH_SOURCE[0]}); cd ..; pwd)"
 
 # Get the binary from the init.d-script
 SERVICE_NAME=$(grep SERVICE_NAME= /etc/init.d/beegfs-storage | cut -d= -f 2)
@@ -29,7 +26,7 @@ else
 fi
 
 export BP_STORE
-LD_PRELOAD="$PREFIX/lib64/bp-changelogger.so" exec -a "\$0" "\$0.bin" \$@
+LD_PRELOAD="$INSTALL_PREFIX/lib64/bp-changelogger.so" exec -a "\$0" "\$0.bin" \$@
 EOF
 
 chmod +x "$BEEGFS_STORAGE_BIN"
