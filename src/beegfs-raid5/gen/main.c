@@ -405,7 +405,10 @@ int get_store_weight(int dirfd)
     int rc = fstatvfs(dirfd, &info);
     if (rc == -1)
         return 0;
-    return (int)log2((double)MAX(1, 100LL*info.f_bfree / info.f_blocks));
+    int64_t block_count = info.f_blocks;
+    int64_t blocks_free = info.f_bfree;
+    double pct_free = (double)(100LL*blocks_free / block_count);
+    return (int)(1000*log2(pct_free + 1.1));
 }
 
 int main(int argc, char **argv)
