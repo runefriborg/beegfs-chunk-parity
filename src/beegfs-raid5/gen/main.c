@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include <err.h>
 #include <errno.h>
 
@@ -11,6 +12,7 @@
 #include <fcntl.h>
 #include <time.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 
 #include <pthread.h>
 
@@ -47,6 +49,7 @@ static int mpi_world_size;
 
 int st2rank[MAX_STORAGE_TARGETS];
 int rank2st[MAX_STORAGE_TARGETS*2+1];
+int st_weight[MAX_STORAGE_TARGETS];
 
 static
 void send_sync_message_to(int recieving_rank, int msg_size, void *msg)
@@ -94,26 +97,6 @@ static void fill_in_missing_fields(FileInfo *dst, const FileInfo *src)
         dst->locations = WITH_P(dst->locations, old_P);
     else
         dst->locations = WITH_P(dst->locations, NO_P);
-}
-
-/*
- * Selecting the P rank is done by hashing the path once and then iteratively
- * hashing the hash result until we can map it to a rank that is not already
- * mentioned in the list of locations.
- * Could be done smarter -- for one there is no guarantee this terminates.
- */
-static
-void select_P(const char *path, FileInfo *fi, unsigned ntargets)
-{
-    if (sts_in_use(fi->locations) == (int)ntargets)
-        return;
-    unsigned H = simple_hash(path, strlen(path));
-choose_P_again:
-    H = H ^ simple_hash((const char *)&H, sizeof(H));
-    uint64_t P = H % ntargets;
-    if (TEST_BIT(fi->locations, P))
-        goto choose_P_again;
-    fi->locations = WITH_P(fi->locations, P);
 }
 
 typedef struct {
@@ -362,6 +345,27 @@ static uint32_t pcg32_random_r(pcg32_random_t* rng)
     uint32_t rot = oldstate >> 59u;
     return (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
 }
+
+static
+void pcg32_srandom_r(pcg32_random_t* rng, uint64_t initstate, uint64_t initseq)
+{
+    rng->state = 0U;
+    rng->inc = (initseq << 1u) | 1u;
+    pcg32_random_r(rng);
+    rng->state += initstate;
+    pcg32_random_r(rng);
+}
+
+static
+uint32_t pcg32_boundedrand_r(pcg32_random_t* rng, uint32_t bound)
+{
+    uint32_t threshold = -bound % bound;
+    for (;;) {
+        uint32_t r = pcg32_random_r(rng);
+        if (r >= threshold)
+            return r % bound;
+    }
+}
 /* -- end of PCG32 code -- */
 
 static
@@ -377,6 +381,31 @@ void shuffle(SizeIndex *array, size_t n)
         array[j] = array[i];
         array[i] = t;
     }
+}
+
+static
+void select_P(const char *path, FileInfo *fi, unsigned ntargets)
+{
+    if (sts_in_use(fi->locations) == (int)ntargets)
+        return;
+    pcg32_random_t rng;
+    pcg32_srandom_r(&rng, simple_hash(path, strlen(path)), 0);
+    uint64_t P;
+    do {
+        int r = pcg32_boundedrand_r(&rng, st_weight[ntargets-1]);
+        for (P = 0; r >= st_weight[P]; P++) { }
+    } while (TEST_BIT(fi->locations, P));
+    fi->locations = WITH_P(fi->locations, P);
+}
+
+static
+int get_store_weight(int dirfd)
+{
+    struct statvfs info;
+    int rc = fstatvfs(dirfd, &info);
+    if (rc == -1)
+        return 0;
+    return (int)log2((double)MAX(1, 100LL*info.f_bfree / info.f_blocks));
 }
 
 int main(int argc, char **argv)
@@ -426,6 +455,8 @@ int main(int argc, char **argv)
     /* Create mapping from storage targets to ranks, and vice versa */
     Target targetIDs[2*MAX_TARGETS] = {{0,0,0}};
     Target targetID = {0,0,GIT_VERSION};
+    int target_weight = 0;
+    int target_weights[2*MAX_TARGETS] = {0};
     if (mpi_rank != 0)
     {
         int target_ID_fd = openat(store_fd, "targetNumID", O_RDONLY);
@@ -434,10 +465,16 @@ int main(int argc, char **argv)
         close(target_ID_fd);
         targetID.id = atoi(targetID_s);
         targetID.rank = mpi_rank;
+        target_weight = get_store_weight(store_fd);
     }
     MPI_Gather(
             &targetID, sizeof(Target), MPI_BYTE,
             targetIDs, sizeof(Target), MPI_BYTE,
+            0,
+            MPI_COMM_WORLD);
+    MPI_Gather(
+            &target_weight, sizeof(int), MPI_BYTE,
+            target_weights, sizeof(int), MPI_BYTE,
             0,
             MPI_COMM_WORLD);
     if (mpi_rank == 0) {
@@ -467,6 +504,7 @@ int main(int argc, char **argv)
         }
         last_run.ntargets = ntargets;
         rank2st[0] = -1;
+        int total_weight = 0;
         for (int i = 0; i < ntargets; i++)
         {
             int rank = last_run.targetIDs[i].rank;
@@ -475,10 +513,13 @@ int main(int argc, char **argv)
             st2rank[i] = rank;
             rank2st[st2rank[i]] = i;
             rank2st[st2rank[i]+1] = i;
+            total_weight += target_weights[rank];
+            st_weight[i] = total_weight;
         }
     }
     MPI_Bcast(st2rank, sizeof(st2rank), MPI_BYTE, 0, MPI_COMM_WORLD);
     MPI_Bcast(rank2st, sizeof(rank2st), MPI_BYTE, 0, MPI_COMM_WORLD);
+    MPI_Bcast(st_weight, sizeof(st_weight), MPI_BYTE, 0, MPI_COMM_WORLD);
 
     if (mpi_rank == 0) {
         if (write(last_run_fd, &last_run, sizeof(RunData)) == -1)

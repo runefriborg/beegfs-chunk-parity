@@ -55,8 +55,8 @@ build() {
     _mpicc task_processing.o    -c common/task_processing.c
     _mpicc persistent_db.o      -c common/persistent_db.c
 
-    _mpicc bp-parity-gen     gen/main.c gen/file_info_hash.c gen/assign_lanes.c $common $lvldb -DMAX_WORKITEMS=$MAX_ITEMS
-    _mpicc bp-parity-rebuild rebuild/main.c                                     $common $lvldb
+    _mpicc bp-parity-gen     gen/main.c gen/file_info_hash.c gen/assign_lanes.c $common -lm $lvldb -DMAX_WORKITEMS=$MAX_ITEMS
+    _mpicc bp-parity-rebuild rebuild/main.c                                     $common     $lvldb
     )
 
     cp "src/beegfs-parity-gen"      "$BUILD/"

@@ -16,7 +16,7 @@ clean:
 	rm -f ${PROGRAMS}
 
 bp-parity-gen: gen/main.o gen/file_info_hash.o gen/assign_lanes.o common/progress_reporting.o common/task_processing.o common/persistent_db.o
-	$(CC) -L$(CONF_LEVELDB_LIBPATH) -lleveldb -lpthread $(LDFLAGS) $^ -o $@
+	$(CC) -L$(CONF_LEVELDB_LIBPATH) -lleveldb -lpthread -lm $(LDFLAGS) $^ -o $@
 bp-parity-rebuild: rebuild/main.o common/progress_reporting.o common/task_processing.o common/persistent_db.o
 	$(CC) -L$(CONF_LEVELDB_LIBPATH) -lleveldb $(LDFLAGS) $^ -o $@
 
