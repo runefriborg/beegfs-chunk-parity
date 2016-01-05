@@ -155,11 +155,16 @@ int main(int argc, char **argv)
             Target target = targetIDs[i];
             int j = 0;
             int found = 0;
-            for (; j < ntargets; j++)
-                if (last_run.targetIDs[j].id == target.id) {
-                    last_run.targetIDs[j] = target;
+            for (; j < last_run.ntargets; j++) {
+                Target *candidate = last_run.targetIDs + j;
+                if (candidate->id == target.id) {
+                    if (candidate->rank != -1)
+                        errx(1, "Duplicate targetNumID = %d", candidate->id);
+                    *candidate = target;
                     found = 1;
+                    break;
                 }
+            }
             if (!found) {
                 /* ERROR - new target introduced */
                 printf(" > %d, %d\n", target.id, target.rank);

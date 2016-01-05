@@ -510,12 +510,18 @@ int main(int argc, char **argv)
         for (int i = 0; i < ntargets; i++) {
             Target target = targetIDs[i];
             int j = 0;
-            for (; j < last_run.ntargets; j++)
-                if (last_run.targetIDs[j].id == target.id) {
-                    last_run.targetIDs[j] = target;
+            int found = 0;
+            for (; j < last_run.ntargets; j++) {
+                Target *candidate = last_run.targetIDs + j;
+                if (candidate->id == target.id) {
+                    if (candidate->rank != -1)
+                        errx(1, "Duplicate targetNumID = %d", candidate->id);
+                    *candidate = target;
+                    found = 1;
                     break;
                 }
-            if (j + 1 >= last_run.ntargets)
+            }
+            if (!found)
                 last_run.targetIDs[k++] = target;
         }
         last_run.ntargets = ntargets;
