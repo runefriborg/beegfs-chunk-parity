@@ -407,6 +407,19 @@ int get_store_weight(int dirfd)
         return 0;
     int64_t block_count = info.f_blocks;
     int64_t blocks_free = info.f_bfree;
+    int free_space_fd = openat(dirfd, "free_space.override", O_RDONLY);
+    if (free_space_fd != -1)
+    {
+        char avail_bytes[64] = {0};
+        rc = read(free_space_fd, avail_bytes, sizeof(avail_bytes));
+        if (rc == -1)
+            err(1, "Found 'free_space.override' but cannot read it");
+        close(free_space_fd);
+        blocks_free = MAX(atoll(avail_bytes), 0);
+        blocks_free /= info.f_bsize;
+    }
+    else if (errno != ENOENT)
+        err(1, "Found 'free_space.override' but cannot open it");
     double pct_free = (double)(100LL*blocks_free / block_count);
     return (int)(1000*log2(pct_free + 1.1));
 }
