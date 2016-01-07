@@ -139,6 +139,8 @@ void *process_list(void *p)
 
         if (params->worklist_lanes[i] != lane)
             continue;
+        if (GET_P(worklist_info[i].locations) == NO_P)
+            continue;
 
         int report = process_task(hs, val, worklist_info + i, ti);
         if (worklist_info[i].locations & L_MASK)
@@ -778,6 +780,12 @@ int main(int argc, char **argv)
                 fi->locations &= ~new_fi.deleted;
                 if (P_IS_INVALID(fi->locations))
                     select_P(s, fi, (unsigned)ntargets);
+                if (has_an_old_version
+                        && prev_fi.timestamp == fi->timestamp
+                        && prev_fi.locations == fi->locations)
+                {
+                    fi->locations = WITH_P(fi->locations, NO_P);
+                }
                 memcpy(worklist_keys + path_bytes, s, s_len + 1);
                 path_bytes += s_len + 1;
             }
