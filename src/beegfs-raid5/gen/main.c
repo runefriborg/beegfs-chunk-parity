@@ -607,7 +607,7 @@ int main(int argc, char **argv)
     if (mpi_rank == global_coordinator)
     {
         int still_in_stage_1 = ntargets;
-        printf("chunks: ");
+        printf("events: ");
         while (still_in_stage_1 > 0) {
             MPI_Status stat;
             int64_t files_seen;
@@ -628,7 +628,7 @@ int main(int argc, char **argv)
         uint8_t dummy = 1;
         for (int i = 1; i < 1 + 2*ntargets; i+=2)
             send_sync_message_to(i, 1, &dummy);
-        printf("\nTotal number of chunks found: %8ld\n", files_seen_total);
+        printf("\nTotal number of events found: %8ld\n", files_seen_total);
     }
     else if (p1_feeder)
     {
@@ -676,7 +676,7 @@ int main(int argc, char **argv)
                     names[idx] = n;
                     items_received += 1;
                     if (items_received >= MAX_WORKITEMS)
-                        errx(1, "Too many chunks (max = %llu)", MAX_WORKITEMS);
+                        errx(1, "Too many events (max = %llu)", MAX_WORKITEMS);
                 }
                 else
                     name_bytes_written -= pfi->path_len + 1;
@@ -799,10 +799,21 @@ int main(int argc, char **argv)
         if (nitems == 0)
             continue;
 
+        uint64_t events_per_st[MAX_TARGETS] = {0};
+        uint64_t events_processed = 0;
+
         if (mpi_rank == 0) {
-            printf("\n==== begin iteration with %zu files ====\n", nitems);
+            printf("\n==== begin iteration ====\n");
             printf("st - total files   | data read     | data written  | disk I/O\n");
             pr_receive_loop(mpi_bcast_size-1);
+            MPI_Gather(
+                    &events_processed, sizeof(events_processed), MPI_BYTE,
+                    events_per_st, sizeof(events_processed), MPI_BYTE,
+                    0,
+                    comm);
+            for (int j = 0; j < ntargets; j++)
+                events_processed += events_per_st[j];
+            printf("==== end iteration (calculated parity for %zu files) ====\n", events_processed);
             MPI_Barrier(comm);
             continue;
         }
@@ -876,6 +887,14 @@ after_reporting_loop:
         pr_report_progress(&pr_sender, pr_sample);
         pr_clear_tmp(&pr_sample);
         pr_report_done(&pr_sender);
+
+        events_processed = pr_sample.total_nfiles;
+        MPI_Gather(
+                &events_processed, sizeof(events_processed), MPI_BYTE,
+                events_per_st, sizeof(events_processed), MPI_BYTE,
+                0,
+                comm);
+
         MPI_Barrier(comm);
     }
 
