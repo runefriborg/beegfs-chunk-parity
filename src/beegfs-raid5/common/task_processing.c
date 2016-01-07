@@ -321,7 +321,7 @@ void chunk_sender(const char *path, const FileInfo *task, TaskInfo ti, HostState
         close(fd);
 }
 
-/* Returns non-zero if we are involved in the task */
+/* Returns non-zero if we are involved in the task and it isn't a delete task */
 int process_task(HostState *hs, const char *path, const FileInfo *fi, TaskInfo ti)
 {
     assert(GET_P(fi->locations) != NO_P);
@@ -334,5 +334,7 @@ int process_task(HostState *hs, const char *path, const FileInfo *fi, TaskInfo t
         chunk_sender(path, fi, ti, hs);
     else
         return 0;
-    return 1;
+
+    const int active_source_ranks = active_ranks(fi->locations);
+    return active_source_ranks != 0;
 }
