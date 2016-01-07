@@ -18,7 +18,7 @@
 /* MAX_OPEN_FILES should match the limit set for the beegfs-storage process. */
 #define MAX_OPEN_FILES              60000
 #define MAX_PATH_LENGTH             512
-#define CHANGELOG_ROTATION_TIME     86400
+#define CHANGELOG_ROTATION_TIME     3600
 #define CHANGELOG_FOLDER            "/dev/shm/beegfs-changelog/"
 
 /* DEBUG must be defined, change to 0 to disable debug info */
