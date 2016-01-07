@@ -124,10 +124,10 @@ if flock --exclusive --nonblock 500; then
         find $dname/spool/db -mindepth 1 -delete
         find $dname/spool/ -mindepth 1 -type f -delete
     fi
-    $mpirun ./bp-parity-gen $operation $base_dir $last_timestamp $timestamp $dname/spool/data $dname/spool/db
+    $mpirun ./bp-parity-gen $operation $base_dir $dname/run/changelog-del $dname/spool/data $dname/spool/db
 
     echo $timestamp > $last_successful_timestamp_file
-    $mpirun ./bp-find-chunks-changed-between --cleanup-until="$timestamp" --store="$base_dir"
+    mpirun --hostfile $hostfile ./bp-find-chunks-changed-between --cleanup --deletable="$dname/run/changelog-del"
 else
     echo "** Error: Can't acquire lock, is the program already running?" 1>&2
 fi

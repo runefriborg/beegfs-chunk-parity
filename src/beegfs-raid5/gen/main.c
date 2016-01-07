@@ -426,17 +426,16 @@ int get_store_weight(int dirfd)
 
 int main(int argc, char **argv)
 {
-    if (argc != 7) {
-        fputs("We need 6 arguments\n", stdout);
+    if (argc != 6) {
+        fputs("We need 5 arguments\n", stdout);
         return 1;
     }
 
     const char *operation = argv[1];
     const char *store_dir = argv[2];
-    const char *timestamp_a = argv[3];
-    const char *timestamp_b = argv[4];
-    const char *data_file = argv[5];
-    const char *db_folder = argv[6];
+    const char *deletable = argv[3];
+    const char *data_file = argv[4];
+    const char *db_folder = argv[5];
 
     PROF_START(total);
 
@@ -636,7 +635,7 @@ int main(int argc, char **argv)
         if (strcmp(operation, "complete") == 0)
             snprintf(cmd_buf, sizeof(cmd_buf), "bp-find-all-chunks %s/chunks", store_dir);
         else if (strcmp(operation, "partial") == 0)
-            snprintf(cmd_buf, sizeof(cmd_buf), "bp-find-chunks-changed-between --from %s --to %s --store %s/chunks/", timestamp_a, timestamp_b, store_dir);
+            snprintf(cmd_buf, sizeof(cmd_buf), "bp-find-chunks-changed-between --deletable %s --store %s/chunks/", deletable, store_dir);
         else
             strcpy(cmd_buf, "cat /dev/null");
         slave = popen(cmd_buf, "r");
